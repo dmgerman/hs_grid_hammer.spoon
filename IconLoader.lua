@@ -7,9 +7,13 @@ local Color = dofile(hs.spoons.resourcePath("Color.lua"))
 
 local M = {}
 
+--------------------------------------------------------------------------------
 -- Cache configuration
+--------------------------------------------------------------------------------
+
 local MAX_CACHE_SIZE = 100
 local EVICTION_COUNT = 20
+local ICON_SIZE = 64
 
 -- Cache storage: cache[key] = {image = hs.image, lastUsed = timestamp}
 local cache = {}
@@ -22,25 +26,25 @@ local stats = {
   evictions = 0,
 }
 
---- Get current timestamp
+--------------------------------------------------------------------------------
+-- Private helpers
+--------------------------------------------------------------------------------
+
 local function timestamp()
   return os.time()
 end
 
 --- Evict least recently used entries
 local function evictLRU()
-  -- Build array of {key, lastUsed}
   local entries = {}
   for key, entry in pairs(cache) do
     table.insert(entries, {key = key, lastUsed = entry.lastUsed})
   end
 
-  -- Sort by lastUsed (oldest first)
   table.sort(entries, function(a, b)
     return a.lastUsed < b.lastUsed
   end)
 
-  -- Evict oldest entries
   local evicted = 0
   for i = 1, math.min(EVICTION_COUNT, #entries) do
     cache[entries[i].key] = nil
@@ -50,6 +54,56 @@ local function evictLRU()
 
   stats.evictions = stats.evictions + evicted
 end
+
+--- Common app search directories
+local APP_SEARCH_PATHS = {
+  "/Applications",
+  "/System/Applications",
+  "/Applications/Utilities",
+}
+
+--- Find application path by name
+--- @param appName string Application name
+--- @return string|nil Path to app bundle or nil
+local function findAppPath(appName)
+  -- Try running app first
+  local app = hs.application.find(appName)
+  if app then
+    return app:path()
+  end
+
+  -- Search common locations
+  local home = os.getenv("HOME")
+  local searchPaths = {
+    "/Applications/" .. appName .. ".app",
+    "/System/Applications/" .. appName .. ".app",
+    "/Applications/Utilities/" .. appName .. ".app",
+    home .. "/Applications/" .. appName .. ".app",
+  }
+
+  for _, path in ipairs(searchPaths) do
+    if hs.fs.attributes(path) then
+      return path
+    end
+  end
+
+  return nil
+end
+
+--- Load and resize icon from path
+--- @param path string Path to file/app
+--- @return hs.image|nil Resized image or nil
+local function loadIconFromPath(path)
+  local image = hs.image.iconForFile(path)
+  if image then
+    return image:setSize({w = ICON_SIZE, h = ICON_SIZE})
+  end
+  return nil
+end
+
+--------------------------------------------------------------------------------
+-- Public API
+--------------------------------------------------------------------------------
 
 --- Get image from cache
 --- @param key string Cache key
@@ -83,10 +137,10 @@ function M.put(key, image)
   }
 end
 
---- Load icon asynchronously
+--- Load icon asynchronously from file path.
 --- Checks cache first, then loads in next run loop iteration.
 ---
---- @param path string File path to load icon from (app or file)
+--- @param path string File path to load icon from
 --- @param callback function Called with (image) when ready
 function M.loadAsync(path, callback)
   if not path then
@@ -94,26 +148,22 @@ function M.loadAsync(path, callback)
     return
   end
 
-  -- Check cache
   local cached = M.get(path)
   if cached then
     callback(cached)
     return
   end
 
-  -- Load asynchronously
   hs.timer.doAfter(0, function()
-    local image = hs.image.iconForFile(path)
+    local image = loadIconFromPath(path)
     if image then
-      -- Resize to standard icon size
-      image = image:setSize({w = 64, h = 64})
       M.put(path, image)
     end
     callback(image)
   end)
 end
 
---- Load icon for application by name
+--- Load icon for application by name.
 --- Finds the app path first, then loads icon.
 ---
 --- @param appName string Application name
@@ -124,7 +174,6 @@ function M.loadAppIconAsync(appName, callback)
     return
   end
 
-  -- Check cache by app name
   local cacheKey = "app:" .. appName
   local cached = M.get(cacheKey)
   if cached then
@@ -132,46 +181,18 @@ function M.loadAppIconAsync(appName, callback)
     return
   end
 
-  -- Find app path and load
   hs.timer.doAfter(0, function()
-    local app = hs.application.find(appName)
-    local appPath = nil
-
-    if app then
-      appPath = app:path()
-    else
-      -- Try to find by bundle ID or path
-      local bundleID = hs.application.infoForBundlePath("/Applications/" .. appName .. ".app")
-      if bundleID then
-        appPath = "/Applications/" .. appName .. ".app"
-      else
-        -- Search common locations
-        local searchPaths = {
-          "/Applications/" .. appName .. ".app",
-          "/System/Applications/" .. appName .. ".app",
-          "/Applications/Utilities/" .. appName .. ".app",
-          os.getenv("HOME") .. "/Applications/" .. appName .. ".app",
-        }
-        for _, path in ipairs(searchPaths) do
-          if hs.fs.attributes(path) then
-            appPath = path
-            break
-          end
-        end
-      end
+    local appPath = findAppPath(appName)
+    if not appPath then
+      callback(nil)
+      return
     end
 
-    if appPath then
-      local image = hs.image.iconForFile(appPath)
-      if image then
-        image = image:setSize({w = 64, h = 64})
-        M.put(cacheKey, image)
-        callback(image)
-        return
-      end
+    local image = loadIconFromPath(appPath)
+    if image then
+      M.put(cacheKey, image)
     end
-
-    callback(nil)
+    callback(image)
   end)
 end
 
@@ -181,7 +202,7 @@ end
 --- @param size number Optional size (default 64)
 --- @return hs.image Placeholder image
 function M.placeholder(text, size)
-  size = size or 64
+  size = size or ICON_SIZE
   local letter = string.upper(string.sub(text or "?", 1, 1))
   local bgColor = Color.fromString(text)
 

@@ -52,31 +52,62 @@ end
 local function createModal(mods, key)
   if mods and key then
     return hs.hotkey.modal.new(mods, key)
-  else
-    return hs.hotkey.modal.new()
+  end
+  return hs.hotkey.modal.new()
+end
+
+--- Create a Grid object from an action's submenuTable if present.
+--- Mutates action.submenu. No-op if submenu already exists or no submenuTable.
+--- @param action table Action to process
+--- @param parentGrid table Parent grid (for inheriting config)
+local function createSubmenuFromTable(action, parentGrid)
+  if not action.submenuTable then return end
+  if action.submenu then return end
+
+  action.submenu = M.new(
+    nil, nil,  -- No global trigger for submenus
+    action.submenuTable,
+    action.description or "Submenu",
+    parentGrid.config,
+    parentGrid.chooserKey
+  )
+
+  -- Allow parent's trigger key to close submenu
+  if parentGrid.triggerKey then
+    action.submenu.modal:bind(
+      parentGrid.triggerMods or {},
+      parentGrid.triggerKey,
+      function() action.submenu:stop() end
+    )
   end
 end
 
---- Convert submenuTable to Grid object if needed
---- @param action table Action with potential submenuTable
---- @param parentGrid table Parent grid instance
-local function ensureSubmenuGrid(action, parentGrid)
-  if action.submenuTable and not action.submenu then
-    action.submenu = M.new(
-      nil,  -- No global trigger for submenus
-      nil,
-      action.submenuTable,
-      action.description or "Submenu",
-      parentGrid.config,
-      parentGrid.chooserKey
-    )
-    -- Bind parent's trigger key to close submenu
-    if parentGrid.triggerKey then
-      action.submenu.modal:bind(
-        parentGrid.triggerMods or {},
-        parentGrid.triggerKey,
-        function() action.submenu:stop() end
-      )
+--- Create the key handler for an action
+--- @param grid table Grid instance
+--- @param action table Action being bound
+--- @return function Handler function for modal:bind
+local function createActionHandler(grid, action)
+  return function()
+    local selectedKeyId = action.submenu and nil or action.keyId
+    grid:stop(selectedKeyId)
+
+    hs.timer.doAfter(grid.theme.fadeTime, function()
+      if action.submenu then
+        action.submenu:start()
+      else
+        action.handler()
+      end
+    end)
+  end
+end
+
+--- Iterate over all actions in actionTable, calling fn for each
+--- @param actionTable table 2D array of actions
+--- @param fn function Called with (action, rowIdx, colIdx)
+local function forEachAction(actionTable, fn)
+  for rowIdx, row in ipairs(actionTable) do
+    for colIdx, action in ipairs(row) do
+      fn(action, rowIdx, colIdx)
     end
   end
 end
@@ -84,49 +115,33 @@ end
 --- Bind all action keys to the modal
 --- @param grid table Grid instance
 local function bindActionKeys(grid)
-  for _, row in ipairs(grid.actionTable) do
-    for _, action in ipairs(row) do
-      if action.key then
-        ensureSubmenuGrid(action, grid)
+  forEachAction(grid.actionTable, function(action)
+    if not action.key then return end
 
-        local hasAction = action.handler or action.submenu
-        if hasAction then
-          grid.modal:bind(action.mods or {}, action.key, function()
-            if action.submenu then
-              grid:stop()
-              hs.timer.doAfter(grid.theme.fadeTime, function()
-                action.submenu:start()
-              end)
-            else
-              local keyId = action.keyId
-              grid:stop(keyId)
-              hs.timer.doAfter(grid.theme.fadeTime, function()
-                action.handler()
-              end)
-            end
-          end)
-        end
-      end
-    end
-  end
+    createSubmenuFromTable(action, grid)
+
+    local hasAction = action.handler or action.submenu
+    if not hasAction then return end
+
+    grid.modal:bind(
+      action.mods or {},
+      action.key,
+      createActionHandler(grid, action)
+    )
+  end)
 end
 
 --- Bind system keys (escape, trigger toggle, chooser)
 --- @param grid table Grid instance
 local function bindSystemKeys(grid)
-  -- Escape to close
-  grid.modal:bind({}, "escape", function()
-    grid:stop()
-  end)
+  grid.modal:bind({}, "escape", function() grid:stop() end)
 
-  -- Trigger key toggles modal off
   if grid.triggerKey then
     grid.modal:bind(grid.triggerMods or {}, grid.triggerKey, function()
       grid:stop()
     end)
   end
 
-  -- Chooser key
   if grid.chooserKey then
     grid.modal:bind({}, grid.chooserKey, function()
       grid:showChooser()
@@ -141,16 +156,17 @@ local function setupModalCallbacks(grid)
     grid.isShowing = true
 
     local showDelay = grid.config.showDelay or 0
-    if showDelay > 0 then
-      grid.showTimer = hs.timer.doAfter(showDelay, function()
-        grid.showTimer = nil
-        if grid.isShowing then
-          grid:showAndLoadIcons()
-        end
-      end)
-    else
+    if showDelay <= 0 then
       grid:showAndLoadIcons()
+      return
     end
+
+    grid.showTimer = hs.timer.doAfter(showDelay, function()
+      grid.showTimer = nil
+      if grid.isShowing then
+        grid:showAndLoadIcons()
+      end
+    end)
   end
 
   function grid.modal:exited()
@@ -199,21 +215,21 @@ end
 --- Load icons asynchronously after grid is shown
 --- @param loader table The IconLoader module
 function Grid:loadIconsAsync(loader)
-  for _, row in ipairs(self.actionTable) do
-    for _, action in ipairs(row) do
-      if action.key and not action.icon then
-        local iconPath = action.applicationPath or action.file
-        if iconPath then
-          local keyId = action.keyId
-          loader.loadAsync(iconPath, function(image)
-            if image and self.isShowing then
-              self.renderer:updateIcon(keyId, image)
-            end
-          end)
-        end
+  forEachAction(self.actionTable, function(action)
+    if not action.key then return end
+    if action.icon then return end
+
+    local iconPath = action.applicationPath or action.file
+    if not iconPath then return end
+
+    local keyId = action.keyId
+    local grid = self
+    loader.loadAsync(iconPath, function(image)
+      if image and grid.isShowing then
+        grid.renderer:updateIcon(keyId, image)
       end
-    end
-  end
+    end)
+  end)
 end
 
 --- Show the chooser interface
@@ -237,11 +253,10 @@ function Grid:showChooser()
   end
 
   local chooser = hs.chooser.new(function(choice)
-    if choice then
-      local action = actions[choice.uuid]
-      if action and action.handler then
-        action.handler()
-      end
+    if not choice then return end
+    local action = actions[choice.uuid]
+    if action and action.handler then
+      action.handler()
     end
   end)
 

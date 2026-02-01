@@ -7,6 +7,9 @@ local Color = dofile(hs.spoons.resourcePath("Color.lua"))
 
 local M = {}
 
+-- Standard icon size
+local ICON_SIZE = 64
+
 --- Load icon from a PNG/image file
 --- @param filePath string Path to the image file
 --- @return hs.image|nil The loaded image or nil
@@ -15,7 +18,7 @@ function M.fromFile(filePath)
 
   local image = hs.image.imageFromPath(filePath)
   if image then
-    return image:setSize({w = 64, h = 64})
+    return image:setSize({w = ICON_SIZE, h = ICON_SIZE})
   end
   return nil
 end
@@ -28,7 +31,7 @@ function M.fromPath(path)
 
   local image = hs.image.iconForFile(path)
   if image then
-    return image:setSize({w = 64, h = 64})
+    return image:setSize({w = ICON_SIZE, h = ICON_SIZE})
   end
   return nil
 end
@@ -41,7 +44,7 @@ function M.fromBundleID(bundleID)
 
   local image = hs.image.imageFromAppBundle(bundleID)
   if image then
-    return image:setSize({w = 64, h = 64})
+    return image:setSize({w = ICON_SIZE, h = ICON_SIZE})
   end
   return nil
 end
@@ -52,7 +55,7 @@ end
 --- @param bgColor table Optional background color {red, green, blue, alpha}
 --- @return hs.image The generated placeholder image
 function M.placeholder(text, symbol, bgColor)
-  local size = 64
+  local size = ICON_SIZE
   local displayChar = symbol or string.upper(string.sub(text or "?", 1, 1))
 
   if not bgColor then
@@ -91,7 +94,7 @@ end
 --- @return hs.image The generated image
 function M.fromText(label, options)
   options = options or {}
-  local size = 64
+  local size = ICON_SIZE
 
   local bgColor = options.backgroundColor or {red = 0.1, green = 0.1, blue = 0.1, alpha = 1.0}
   local textColor = options.textColor or {white = 1.0}
@@ -185,7 +188,7 @@ M.phosphor = M.symbol
 --- Create an empty/transparent icon
 --- @return hs.image A transparent 64x64 image
 function M.empty()
-  local size = 64
+  local size = ICON_SIZE
   local canvas = hs.canvas.new({x = 0, y = 0, w = size, h = size})
 
   canvas:insertElement({

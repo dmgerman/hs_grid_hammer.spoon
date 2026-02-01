@@ -9,6 +9,203 @@ local Color = dofile(hs.spoons.resourcePath("Color.lua"))
 local M = {}
 M.__index = M
 
+--------------------------------------------------------------------------------
+-- Private helper functions
+--------------------------------------------------------------------------------
+
+--- Apply alpha multiplier to a color
+--- @param color table Color with red/green/blue or white
+--- @param alpha number Alpha multiplier (0-1)
+--- @return table New color with adjusted alpha
+local function colorWithAlpha(color, alpha)
+  return {
+    red = color.red or color.white,
+    green = color.green or color.white,
+    blue = color.blue or color.white,
+    alpha = (color.alpha or 1.0) * alpha,
+  }
+end
+
+--- Calculate cell position from row/column indices
+--- @param theme table Theme settings
+--- @param rowIdx number 1-based row index
+--- @param colIdx number 1-based column index
+--- @return number cellX, number cellY
+local function cellPosition(theme, rowIdx, colIdx)
+  local cellX = theme.cellSpacing + (colIdx - 1) * (theme.cellWidth + theme.cellSpacing)
+  local cellY = theme.cellSpacing + (rowIdx - 1) * (theme.cellHeight + theme.cellSpacing)
+  return cellX, cellY
+end
+
+--- Calculate icon position within a cell
+--- @param theme table Theme settings
+--- @param cellX number Cell X position
+--- @param cellY number Cell Y position
+--- @return number iconX, number iconY
+local function iconPosition(theme, cellX, cellY)
+  local iconX = cellX + (theme.cellWidth - theme.iconSize) / 2
+  local iconY = cellY + theme.iconTopMargin
+  return iconX, iconY
+end
+
+--- Create cell background element
+--- @param keyId string Cell identifier
+--- @param theme table Theme settings
+--- @param cellX number Cell X position
+--- @param cellY number Cell Y position
+--- @param alpha number Alpha multiplier
+--- @return table Canvas element
+local function createCellBackground(keyId, theme, cellX, cellY, alpha)
+  return {
+    id = keyId .. "_bg",
+    type = "rectangle",
+    action = "fill",
+    frame = {x = cellX, y = cellY, w = theme.cellWidth, h = theme.cellHeight},
+    fillColor = colorWithAlpha(theme.cellBackground, alpha),
+    roundedRectRadii = {xRadius = theme.cellCornerRadius, yRadius = theme.cellCornerRadius},
+  }
+end
+
+--- Create cell border element
+--- @param keyId string Cell identifier
+--- @param theme table Theme settings
+--- @param cellX number Cell X position
+--- @param cellY number Cell Y position
+--- @param alpha number Alpha multiplier
+--- @param isDashed boolean Whether to use dashed stroke
+--- @return table Canvas element
+local function createCellBorder(keyId, theme, cellX, cellY, alpha, isDashed)
+  return {
+    id = keyId .. "_border",
+    type = "rectangle",
+    action = "stroke",
+    frame = {x = cellX, y = cellY, w = theme.cellWidth, h = theme.cellHeight},
+    strokeColor = colorWithAlpha(theme.cellBorder, alpha),
+    strokeWidth = theme.cellBorderWidth,
+    strokeDashPattern = isDashed and {6, 4} or nil,
+    roundedRectRadii = {xRadius = theme.cellCornerRadius, yRadius = theme.cellCornerRadius},
+  }
+end
+
+--- Create icon image element
+--- @param keyId string Cell identifier
+--- @param theme table Theme settings
+--- @param iconX number Icon X position
+--- @param iconY number Icon Y position
+--- @param image hs.image Icon image
+--- @param alpha number Alpha multiplier
+--- @return table Canvas element
+local function createIconImage(keyId, theme, iconX, iconY, image, alpha)
+  return {
+    id = keyId .. "_icon",
+    type = "image",
+    frame = {x = iconX, y = iconY, w = theme.iconSize, h = theme.iconSize},
+    image = image,
+    imageAlpha = alpha,
+  }
+end
+
+--- Create placeholder icon elements (colored rect + letter)
+--- @param keyId string Cell identifier
+--- @param theme table Theme settings
+--- @param iconX number Icon X position
+--- @param iconY number Icon Y position
+--- @param text string Text for color/letter derivation
+--- @param alpha number Alpha multiplier
+--- @return table, table Background element, letter element
+local function createPlaceholderIcon(keyId, theme, iconX, iconY, text, alpha)
+  local bgElement = {
+    id = keyId .. "_icon_bg",
+    type = "rectangle",
+    action = "fill",
+    frame = {x = iconX, y = iconY, w = theme.iconSize, h = theme.iconSize},
+    fillColor = Color.fromString(text),
+    roundedRectRadii = {xRadius = 8, yRadius = 8},
+    imageAlpha = alpha,
+  }
+
+  local letter = string.upper(string.sub(text or "?", 1, 1))
+  local letterElement = {
+    id = keyId .. "_icon_letter",
+    type = "text",
+    frame = {x = iconX, y = iconY + 12, w = theme.iconSize, h = theme.iconSize - 12},
+    text = letter,
+    textAlignment = "center",
+    textColor = {white = 1.0, alpha = alpha},
+    textFont = "Helvetica Bold",
+    textSize = 32,
+  }
+
+  return bgElement, letterElement
+end
+
+--- Create hotkey label element
+--- @param keyId string Cell identifier
+--- @param theme table Theme settings
+--- @param cellX number Cell X position
+--- @param cellY number Cell Y position
+--- @param mods table Modifier keys
+--- @param key string Key character
+--- @param textColor table Text color
+--- @return table Canvas element
+local function createHotkeyLabel(keyId, theme, cellX, cellY, mods, key, textColor)
+  -- Format hotkey text
+  local hotkeyText = ""
+  if mods and #mods > 0 then
+    local modMap = {cmd = "⌘", ctrl = "⌃", alt = "⌥", shift = "⇧", fn = "fn"}
+    for _, mod in ipairs(mods) do
+      hotkeyText = hotkeyText .. (modMap[string.lower(mod)] or mod)
+    end
+  end
+  hotkeyText = hotkeyText .. string.upper(key)
+
+  return {
+    id = keyId .. "_hotkey",
+    type = "text",
+    frame = {
+      x = cellX + theme.hotkeyInsetX,
+      y = cellY + theme.cellHeight - theme.hotkeyFontSize - theme.hotkeyInsetY - 4,
+      w = theme.cellWidth / 2,
+      h = theme.hotkeyFontSize + 4,
+    },
+    text = hotkeyText,
+    textAlignment = "left",
+    textColor = textColor,
+    textFont = theme.hotkeyFont,
+    textSize = theme.hotkeyFontSize,
+  }
+end
+
+--- Create description label element
+--- @param keyId string Cell identifier
+--- @param theme table Theme settings
+--- @param cellX number Cell X position
+--- @param cellY number Cell Y position
+--- @param description string Description text
+--- @param textColor table Text color
+--- @return table Canvas element
+local function createDescriptionLabel(keyId, theme, cellX, cellY, description, textColor)
+  return {
+    id = keyId .. "_desc",
+    type = "text",
+    frame = {
+      x = cellX + theme.cellWidth / 2,
+      y = cellY + theme.cellHeight - theme.descriptionFontSize - theme.descriptionInsetY - 4,
+      w = theme.cellWidth / 2 - theme.descriptionInsetX,
+      h = theme.descriptionFontSize + 4,
+    },
+    text = description,
+    textAlignment = "right",
+    textColor = textColor,
+    textFont = theme.descriptionFont,
+    textSize = theme.descriptionFontSize,
+  }
+end
+
+--------------------------------------------------------------------------------
+-- CanvasRenderer methods
+--------------------------------------------------------------------------------
+
 --- Create a new CanvasRenderer
 ---
 --- @param actionTable table 2D array of actions (rows of columns)
@@ -19,12 +216,12 @@ function M.new(actionTable, theme)
   self.actionTable = actionTable
   self.theme = theme or Theme.default
   self.canvas = nil
-  self.cellElements = {}  -- Map of keyId -> {bgIndex, iconIndex, hotkeyIndex, descIndex}
+  self.cellElements = {}
   return self
 end
 
 --- Calculate grid dimensions from action table
---- @return number rows, number cols, number maxCols
+--- @return number rows, number maxCols
 function M:gridDimensions()
   local rows = #self.actionTable
   local maxCols = 0
@@ -39,10 +236,8 @@ end
 function M:canvasSize()
   local rows, cols = self:gridDimensions()
   local t = self.theme
-
   local width = (cols * t.cellWidth) + ((cols + 1) * t.cellSpacing)
   local height = (rows * t.cellHeight) + ((rows + 1) * t.cellSpacing)
-
   return width, height
 end
 
@@ -52,11 +247,62 @@ function M:centeredPosition()
   local width, height = self:canvasSize()
   local screen = hs.screen.mainScreen()
   local frame = screen:frame()
+  return frame.x + (frame.w - width) / 2,
+         frame.y + (frame.h - height) / 2
+end
 
-  local x = frame.x + (frame.w - width) / 2
-  local y = frame.y + (frame.h - height) / 2
+--- Build elements for a single cell
+--- @param action table Action data
+--- @param rowIdx number Row index
+--- @param colIdx number Column index
+--- @return table Array of canvas elements for this cell
+--- @return table Cell element indexes
+function M:buildCellElements(action, rowIdx, colIdx)
+  local elements = {}
+  local t = self.theme
+  local keyId = action.keyId or string.format("%dx%d", rowIdx, colIdx)
 
-  return x, y
+  local cellX, cellY = cellPosition(t, rowIdx, colIdx)
+  local iconX, iconY = iconPosition(t, cellX, cellY)
+
+  local isEmpty = action.empty == true
+  local isNotFound = action.notFound == true
+  local alpha = (isEmpty or isNotFound) and t.cellEmptyAlpha or 1.0
+  local textColor = (isEmpty or isNotFound) and t.textColorDimmed or t.textColor
+
+  local cellIndexes = {}
+
+  -- Background
+  cellIndexes.bgIndex = 1
+  table.insert(elements, createCellBackground(keyId, t, cellX, cellY, alpha))
+
+  -- Border
+  table.insert(elements, createCellBorder(keyId, t, cellX, cellY, alpha, isEmpty))
+
+  -- Icon
+  cellIndexes.iconIndex = #elements + 1
+  if action.icon then
+    table.insert(elements, createIconImage(keyId, t, iconX, iconY, action.icon, alpha))
+  else
+    local text = action.description or action.key or "?"
+    local bgEl, letterEl = createPlaceholderIcon(keyId, t, iconX, iconY, text, alpha)
+    table.insert(elements, bgEl)
+    table.insert(elements, letterEl)
+  end
+
+  -- Hotkey label
+  if action.key then
+    cellIndexes.hotkeyIndex = #elements + 1
+    table.insert(elements, createHotkeyLabel(keyId, t, cellX, cellY, action.mods, action.key, textColor))
+  end
+
+  -- Description label
+  if action.description and action.description ~= "" then
+    cellIndexes.descIndex = #elements + 1
+    table.insert(elements, createDescriptionLabel(keyId, t, cellX, cellY, action.description, textColor))
+  end
+
+  return elements, cellIndexes, keyId
 end
 
 --- Build canvas elements array
@@ -66,7 +312,7 @@ function M:buildElements()
   local t = self.theme
   local width, height = self:canvasSize()
 
-  -- 1. Background rectangle
+  -- Background
   table.insert(elements, {
     type = "rectangle",
     action = "fill",
@@ -75,153 +321,28 @@ function M:buildElements()
     roundedRectRadii = {xRadius = 10, yRadius = 10},
   })
 
-  -- 2. Cells
-  local elementIndex = 2  -- Start after background
+  -- Cells
   for rowIdx, row in ipairs(self.actionTable) do
     for colIdx, action in ipairs(row) do
-      local keyId = action.keyId or string.format("%dx%d", rowIdx, colIdx)
-
-      -- Skip no-key cells entirely
-      if action.key == nil and not action.description then
+      if not action.key and not action.description then
         goto continue
       end
 
-      local cellX = t.cellSpacing + (colIdx - 1) * (t.cellWidth + t.cellSpacing)
-      local cellY = t.cellSpacing + (rowIdx - 1) * (t.cellHeight + t.cellSpacing)
+      local cellElements, cellIndexes, keyId = self:buildCellElements(action, rowIdx, colIdx)
 
-      local isEmpty = action.empty == true
-      local isNotFound = action.notFound == true
-      local cellAlpha = (isEmpty or isNotFound) and t.cellEmptyAlpha or 1.0
-
-      -- Track element indexes for this cell
-      local cellIndexes = {
-        bgIndex = elementIndex,
-      }
-
-      -- Cell background
-      local bgColor = {
-        red = t.cellBackground.red,
-        green = t.cellBackground.green,
-        blue = t.cellBackground.blue,
-        alpha = (t.cellBackground.alpha or 1.0) * cellAlpha,
-      }
-      table.insert(elements, {
-        id = keyId .. "_bg",
-        type = "rectangle",
-        action = "fill",
-        frame = {x = cellX, y = cellY, w = t.cellWidth, h = t.cellHeight},
-        fillColor = bgColor,
-        roundedRectRadii = {xRadius = t.cellCornerRadius, yRadius = t.cellCornerRadius},
-      })
-      elementIndex = elementIndex + 1
-
-      -- Cell border
-      local borderColor = {
-        red = t.cellBorder.red or t.cellBorder.white,
-        green = t.cellBorder.green or t.cellBorder.white,
-        blue = t.cellBorder.blue or t.cellBorder.white,
-        alpha = (t.cellBorder.alpha or 1.0) * cellAlpha,
-      }
-      table.insert(elements, {
-        id = keyId .. "_border",
-        type = "rectangle",
-        action = "stroke",
-        frame = {x = cellX, y = cellY, w = t.cellWidth, h = t.cellHeight},
-        strokeColor = borderColor,
-        strokeWidth = t.cellBorderWidth,
-        strokeDashPattern = isEmpty and {6, 4} or nil,
-        roundedRectRadii = {xRadius = t.cellCornerRadius, yRadius = t.cellCornerRadius},
-      })
-      elementIndex = elementIndex + 1
-
-      -- Icon placeholder (will be updated async)
-      local iconX = cellX + (t.cellWidth - t.iconSize) / 2
-      local iconY = cellY + t.iconTopMargin
-      cellIndexes.iconIndex = elementIndex
-
-      if action.icon then
-        -- If action already has an hs.image, use it
-        table.insert(elements, {
-          id = keyId .. "_icon",
-          type = "image",
-          frame = {x = iconX, y = iconY, w = t.iconSize, h = t.iconSize},
-          image = action.icon,
-          imageAlpha = cellAlpha,
-        })
-      else
-        -- Placeholder: colored rectangle with first letter
-        local placeholderColor = self:placeholderColor(action.description or action.key or "?")
-        local letter = self:firstLetter(action.description or action.key or "?")
-
-        table.insert(elements, {
-          id = keyId .. "_icon_bg",
-          type = "rectangle",
-          action = "fill",
-          frame = {x = iconX, y = iconY, w = t.iconSize, h = t.iconSize},
-          fillColor = placeholderColor,
-          roundedRectRadii = {xRadius = 8, yRadius = 8},
-          imageAlpha = cellAlpha,
-        })
-        elementIndex = elementIndex + 1
-
-        table.insert(elements, {
-          id = keyId .. "_icon_letter",
-          type = "text",
-          frame = {x = iconX, y = iconY + 12, w = t.iconSize, h = t.iconSize - 12},
-          text = letter,
-          textAlignment = "center",
-          textColor = {white = 1.0, alpha = cellAlpha},
-          textFont = "Helvetica Bold",
-          textSize = 32,
-        })
+      -- Adjust indexes to account for elements already in array
+      local offset = #elements
+      cellIndexes.bgIndex = cellIndexes.bgIndex + offset
+      cellIndexes.iconIndex = cellIndexes.iconIndex + offset
+      if cellIndexes.hotkeyIndex then
+        cellIndexes.hotkeyIndex = cellIndexes.hotkeyIndex + offset
       end
-      elementIndex = elementIndex + 1
-
-      -- Hotkey label (bottom-left)
-      if action.key then
-        local hotkeyText = self:formatHotkey(action.mods, action.key)
-        local textColor = (isEmpty or isNotFound) and t.textColorDimmed or t.textColor
-        cellIndexes.hotkeyIndex = elementIndex
-
-        table.insert(elements, {
-          id = keyId .. "_hotkey",
-          type = "text",
-          frame = {
-            x = cellX + t.hotkeyInsetX,
-            y = cellY + t.cellHeight - t.hotkeyFontSize - t.hotkeyInsetY - 4,
-            w = t.cellWidth / 2,
-            h = t.hotkeyFontSize + 4,
-          },
-          text = hotkeyText,
-          textAlignment = "left",
-          textColor = textColor,
-          textFont = t.hotkeyFont,
-          textSize = t.hotkeyFontSize,
-        })
-        elementIndex = elementIndex + 1
+      if cellIndexes.descIndex then
+        cellIndexes.descIndex = cellIndexes.descIndex + offset
       end
 
-      -- Description label (bottom-right)
-      if action.description and action.description ~= "" then
-        local textColor = (isEmpty or isNotFound) and t.textColorDimmed or t.textColor
-        cellIndexes.descIndex = elementIndex
-
-        table.insert(elements, {
-          id = keyId .. "_desc",
-          type = "text",
-          frame = {
-            x = cellX + t.cellWidth / 2,
-            y = cellY + t.cellHeight - t.descriptionFontSize - t.descriptionInsetY - 4,
-            w = t.cellWidth / 2 - t.descriptionInsetX,
-            h = t.descriptionFontSize + 4,
-          },
-          text = action.description,
-          textAlignment = "right",
-          textColor = textColor,
-          textFont = t.descriptionFont,
-          textSize = t.descriptionFontSize,
-        })
-        elementIndex = elementIndex + 1
+      for _, el in ipairs(cellElements) do
+        table.insert(elements, el)
       end
 
       self.cellElements[keyId] = cellIndexes
@@ -231,36 +352,6 @@ function M:buildElements()
   end
 
   return elements
-end
-
---- Generate a deterministic placeholder color from a string
---- @param str string Input string (usually description or key)
---- @return table Color table
-function M:placeholderColor(str)
-  return Color.fromString(str)
-end
-
---- Get first letter of a string (uppercase)
---- @param str string Input string
---- @return string First letter uppercase
-function M:firstLetter(str)
-  if not str or str == "" then return "?" end
-  return string.upper(string.sub(str, 1, 1))
-end
-
---- Format hotkey for display
---- @param mods table Modifier keys
---- @param key string The key
---- @return string Formatted hotkey like "Cmd+E" or "E"
-function M:formatHotkey(mods, key)
-  local result = ""
-  if mods and #mods > 0 then
-    local modMap = {cmd = "⌘", ctrl = "⌃", alt = "⌥", shift = "⇧", fn = "fn"}
-    for _, mod in ipairs(mods) do
-      result = result .. (modMap[string.lower(mod)] or mod)
-    end
-  end
-  return result .. string.upper(key)
 end
 
 --- Build and show the canvas
@@ -276,8 +367,7 @@ function M:show()
   self.canvas:level("overlay")
   self.canvas:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
 
-  local elements = self:buildElements()
-  for _, element in ipairs(elements) do
+  for _, element in ipairs(self:buildElements()) do
     self.canvas:insertElement(element)
   end
 
@@ -299,14 +389,12 @@ function M:updateIcon(keyId, image)
   if not self.canvas then return end
 
   local indexes = self.cellElements[keyId]
-  if not indexes or not indexes.iconIndex then return end
+  if not indexes then return end
 
-  -- Find elements by ID and update
+  -- Remove placeholder elements
   local iconBgId = keyId .. "_icon_bg"
   local iconLetterId = keyId .. "_icon_letter"
-  local iconId = keyId .. "_icon"
 
-  -- Remove placeholder elements if they exist
   for i = #self.canvas, 1, -1 do
     local el = self.canvas[i]
     if el and (el.id == iconBgId or el.id == iconLetterId) then
@@ -314,23 +402,15 @@ function M:updateIcon(keyId, image)
     end
   end
 
-  -- Find position for the icon
+  -- Find cell position and insert icon
   local t = self.theme
   for rowIdx, row in ipairs(self.actionTable) do
     for colIdx, action in ipairs(row) do
       local cellKeyId = action.keyId or string.format("%dx%d", rowIdx, colIdx)
       if cellKeyId == keyId then
-        local cellX = t.cellSpacing + (colIdx - 1) * (t.cellWidth + t.cellSpacing)
-        local cellY = t.cellSpacing + (rowIdx - 1) * (t.cellHeight + t.cellSpacing)
-        local iconX = cellX + (t.cellWidth - t.iconSize) / 2
-        local iconY = cellY + t.iconTopMargin
-
-        self.canvas:insertElement({
-          id = iconId,
-          type = "image",
-          frame = {x = iconX, y = iconY, w = t.iconSize, h = t.iconSize},
-          image = image,
-        })
+        local cellX, cellY = cellPosition(t, rowIdx, colIdx)
+        local iconX, iconY = iconPosition(t, cellX, cellY)
+        self.canvas:insertElement(createIconImage(keyId, t, iconX, iconY, image, 1.0))
         return
       end
     end
@@ -340,8 +420,37 @@ end
 --- Highlight a cell (for selection feedback)
 --- @param keyId string The cell's key ID
 function M:highlightCell(keyId)
-  -- Selection highlight is disabled per user request
-  -- This method is kept as a no-op for API compatibility
+  -- No-op for API compatibility
+end
+
+--- Generate a deterministic placeholder color from a string
+--- @param str string Input string
+--- @return table Color table
+function M:placeholderColor(str)
+  return Color.fromString(str)
+end
+
+--- Get first letter of a string (uppercase)
+--- @param str string Input string
+--- @return string First letter uppercase
+function M:firstLetter(str)
+  if not str or str == "" then return "?" end
+  return string.upper(string.sub(str, 1, 1))
+end
+
+--- Format hotkey for display
+--- @param mods table Modifier keys
+--- @param key string The key
+--- @return string Formatted hotkey
+function M:formatHotkey(mods, key)
+  local result = ""
+  if mods and #mods > 0 then
+    local modMap = {cmd = "⌘", ctrl = "⌃", alt = "⌥", shift = "⇧", fn = "fn"}
+    for _, mod in ipairs(mods) do
+      result = result .. (modMap[string.lower(mod)] or mod)
+    end
+  end
+  return result .. string.upper(key)
 end
 
 return M

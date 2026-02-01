@@ -7,6 +7,108 @@ local Util = dofile(hs.spoons.resourcePath("Util.lua"))
 
 local M = {}
 
+--------------------------------------------------------------------------------
+-- Private action type handlers
+--------------------------------------------------------------------------------
+
+--- Handle no-key action (invisible spacer)
+--- @param action table Action being built
+--- @param arg table Original arguments
+local function handleNoKey(action, arg)
+  table.insert(action.classes, "no-key")
+  action.handler = function() end
+  action.description = arg.description or ""
+end
+
+--- Handle empty slot action
+--- @param action table Action being built
+--- @param arg table Original arguments
+local function handleEmpty(action, arg)
+  action.empty = true
+  action.handler = function() end
+  action.description = arg.description or "No action"
+  table.insert(action.classes, "empty")
+end
+
+--- Handle application launcher action
+--- @param action table Action being built
+--- @param arg table Original arguments
+local function handleApplication(action, arg)
+  local appPath = Util.findApplicationPath(arg.application)
+  local appDesc = arg.description or arg.application
+  table.insert(action.classes, "application")
+
+  if not appPath then
+    print(string.format("[hs_grid_hammer] No application found for %s", arg.application))
+    action.description = string.format("(%s)", appDesc)
+    action.notFound = true
+    table.insert(action.classes, "not-found")
+    return
+  end
+
+  action.application = arg.application
+  action.applicationPath = appPath
+  action.description = appDesc
+  action.handler = function()
+    hs.application.launchOrFocus(arg.application)
+  end
+
+  if not arg.icon then
+    action.iconPath = appPath
+  end
+end
+
+--- Handle file/folder opener action
+--- @param action table Action being built
+--- @param arg table Original arguments
+local function handleFile(action, arg)
+  table.insert(action.classes, "file")
+
+  if hs.fs.attributes(arg.file) == nil then
+    print(string.format("[hs_grid_hammer] No file found for %s", arg.file))
+    action.description = string.format("(%s)", Util.getBasename(arg.file))
+    action.notFound = true
+    table.insert(action.classes, "not-found")
+    return
+  end
+
+  action.file = arg.file
+  action.description = arg.description or Util.getBasename(arg.file)
+  action.handler = function()
+    hs.execute(string.format("open '%s'", action.file))
+  end
+
+  if not arg.icon then
+    action.iconPath = arg.file
+  end
+end
+
+--- Handle submenu action
+--- @param action table Action being built
+--- @param arg table Original arguments
+local function handleSubmenu(action, arg)
+  table.insert(action.classes, "submenu")
+
+  if arg.submenu.modal then
+    -- Already a Grid object
+    action.submenu = arg.submenu
+  else
+    -- Action table - store for Grid.lua to convert
+    action.submenuTable = arg.submenu
+  end
+end
+
+--- Handle custom handler action
+--- @param action table Action being built
+--- @param arg table Original arguments
+local function handleCustom(action, arg)
+  table.insert(action.classes, "custom-handler")
+end
+
+--------------------------------------------------------------------------------
+-- Public API
+--------------------------------------------------------------------------------
+
 --- hs_grid_hammer.Action.new(table) -> table
 --- Constructor
 --- Create a new action for a grid
@@ -14,111 +116,47 @@ local M = {}
 --- Parameters:
 ---  * arg - A table containing the parameters for the action.
 ---    * Basic parameters:
----      * mods: (table) Modifier keys like `{"cmd", "ctrl"}` to trigger the action along with the key. Use `{}` for no modifiers
----      * key: (string) A key to trigger the action along with the modifiers, like "x" or "F11".
+---      * mods: (table) Modifier keys like `{"cmd", "ctrl"}`
+---      * key: (string) A key to trigger the action
 ---      * handler: (function) Code to run when the key is pressed
 ---      * description: (string) A description for the action
----      * icon: (hs.image) An hs.image object to display as the icon (optional)
----      * classes: (table) A list of classes for styling hints (optional)
+---      * icon: (hs.image) An hs.image object to display
+---      * classes: (table) A list of classes for styling hints
 ---    * Convenience parameters:
----      * empty: (boolean) If true, the handler is set to a no-op function.
----      * application: (string) The name of an application to switch to.
----      * file: (string) Path to a file or folder to open.
----      * submenu: (table) A Grid object for a submenu.
+---      * empty: (boolean) If true, creates a placeholder slot
+---      * application: (string) Application name to launch
+---      * file: (string) Path to a file or folder to open
+---      * submenu: (table) A Grid object or action table for submenu
 ---
 --- Returns:
 ---  * An action table ready to use in a grid's actionTable
-M.new = function(arg)
-  local action = {}
+function M.new(arg)
+  local action = {
+    mods = arg.mods or {},
+    key = arg.key,
+    handler = arg.handler or function() end,
+    description = arg.description or "",
+    icon = arg.icon,
+    classes = arg.classes or {},
+  }
 
-  action.mods = arg.mods or {}
-  action.key = arg.key
-  action.handler = arg.handler or function() end
-  action.description = arg.description or ""
-  action.icon = arg.icon  -- hs.image object, or nil for placeholder
-  action.classes = arg.classes or {}
-
+  -- Dispatch to appropriate handler based on action type
   if not action.key then
-    -- No key - this is an invisible spacer
-    table.insert(action.classes, "no-key")
-    action.handler = function() end
-    action.description = arg.description or ""
-    return action
+    handleNoKey(action, arg)
   elseif arg.empty then
-    -- Empty slot placeholder
-    action.empty = true
-    action.handler = function() end
-    action.description = arg.description or "No action"
-    table.insert(action.classes, "empty")
-    return action
+    handleEmpty(action, arg)
   elseif arg.application then
-    -- Application launcher
-    local appPath = Util.findApplicationPath(arg.application)
-    local appDesc = arg.description or arg.application
-    table.insert(action.classes, "application")
-
-    if not appPath then
-      print(string.format("[hs_grid_hammer] No application found for %s", arg.application))
-      action.description = string.format("(%s)", appDesc)
-      action.notFound = true
-      table.insert(action.classes, "not-found")
-    else
-      action.application = arg.application
-      action.applicationPath = appPath
-      action.handler = function()
-        hs.application.launchOrFocus(arg.application)
-      end
-      action.description = appDesc
-
-      -- Load icon if not provided (will be loaded async by IconLoader)
-      if not arg.icon then
-        -- Store path for async loading; actual icon loaded by Grid
-        action.iconPath = appPath
-      end
-    end
+    handleApplication(action, arg)
   elseif arg.file then
-    -- File/folder opener
-    table.insert(action.classes, "file")
-
-    if hs.fs.attributes(arg.file) == nil then
-      print(string.format("[hs_grid_hammer] No file found for %s", arg.file))
-      action.description = string.format("(%s)", Util.getBasename(arg.file))
-      action.notFound = true
-      table.insert(action.classes, "not-found")
-    else
-      action.file = arg.file
-      action.handler = function()
-        hs.execute(string.format("open '%s'", action.file))
-      end
-      if not arg.description then
-        action.description = Util.getBasename(action.file)
-      end
-
-      -- Store path for async icon loading
-      if not arg.icon then
-        action.iconPath = arg.file
-      end
-    end
+    handleFile(action, arg)
   elseif arg.submenu then
-    -- Submenu container
-    table.insert(action.classes, "submenu")
-    -- Accept either a Grid object or an action table
-    if arg.submenu.modal then
-      -- Already a Grid object
-      action.submenu = arg.submenu
-    else
-      -- Action table - store for Grid.lua to create Grid object
-      action.submenuTable = arg.submenu
-    end
-    -- Handler is set by Grid.lua when binding keys
+    handleSubmenu(action, arg)
   elseif arg.handler then
-    -- Custom handler
-    table.insert(action.classes, "custom-handler")
+    handleCustom(action, arg)
   end
 
   return action
 end
-
 
 --- hs_grid_hammer.Action.applicationAction(appName, key, mods, description) -> table
 --- Function
@@ -132,7 +170,7 @@ end
 ---
 --- Returns:
 ---  * An action table
-M.applicationAction = function(appName, key, mods, description)
+function M.applicationAction(appName, key, mods, description)
   return M.new({
     application = appName,
     key = key,
@@ -140,7 +178,6 @@ M.applicationAction = function(appName, key, mods, description)
     description = description,
   })
 end
-
 
 --- hs_grid_hammer.Action.fileAction(filePath, key, mods, description) -> table
 --- Function
@@ -154,7 +191,7 @@ end
 ---
 --- Returns:
 ---  * An action table
-M.fileAction = function(filePath, key, mods, description)
+function M.fileAction(filePath, key, mods, description)
   return M.new({
     file = filePath,
     key = key,
@@ -162,7 +199,6 @@ M.fileAction = function(filePath, key, mods, description)
     description = description,
   })
 end
-
 
 --- hs_grid_hammer.Action.emptyAction(key) -> table
 --- Function
@@ -173,13 +209,12 @@ end
 ---
 --- Returns:
 ---  * An action table
-M.emptyAction = function(key)
+function M.emptyAction(key)
   return M.new({
     key = key,
     empty = true,
   })
 end
-
 
 --- hs_grid_hammer.Action.spacer() -> table
 --- Function
@@ -187,9 +222,8 @@ end
 ---
 --- Returns:
 ---  * An action table
-M.spacer = function()
+function M.spacer()
   return M.new({})
 end
-
 
 return M
