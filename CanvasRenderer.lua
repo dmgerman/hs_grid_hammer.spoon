@@ -4,6 +4,7 @@
 --- Replaces GridCraft's WebView with hs.canvas for 10-100x faster rendering.
 
 local Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
+local Color = dofile(hs.spoons.resourcePath("Color.lua"))
 
 local M = {}
 M.__index = M
@@ -236,35 +237,7 @@ end
 --- @param str string Input string (usually description or key)
 --- @return table Color table
 function M:placeholderColor(str)
-  -- Simple hash to pick a color
-  local hash = 0
-  for i = 1, #str do
-    hash = (hash * 31 + string.byte(str, i)) % 360
-  end
-
-  -- Convert hue to RGB (saturation=0.5, lightness=0.4)
-  local h = hash / 360
-  local s = 0.5
-  local l = 0.4
-
-  local function hue2rgb(p, q, t)
-    if t < 0 then t = t + 1 end
-    if t > 1 then t = t - 1 end
-    if t < 1/6 then return p + (q - p) * 6 * t end
-    if t < 1/2 then return q end
-    if t < 2/3 then return p + (q - p) * (2/3 - t) * 6 end
-    return p
-  end
-
-  local q = l < 0.5 and l * (1 + s) or l + s - l * s
-  local p = 2 * l - q
-
-  return {
-    red = hue2rgb(p, q, h + 1/3),
-    green = hue2rgb(p, q, h),
-    blue = hue2rgb(p, q, h - 1/3),
-    alpha = 1.0,
-  }
+  return Color.fromString(str)
 end
 
 --- Get first letter of a string (uppercase)

@@ -3,6 +3,8 @@
 --- Async icon loading with LRU caching.
 --- Prevents UI blocking during icon loading and reduces memory usage.
 
+local Color = dofile(hs.spoons.resourcePath("Color.lua"))
+
 local M = {}
 
 -- Cache configuration
@@ -181,42 +183,15 @@ end
 function M.placeholder(text, size)
   size = size or 64
   local letter = string.upper(string.sub(text or "?", 1, 1))
+  local bgColor = Color.fromString(text)
 
-  -- Generate color from text hash
-  local hash = 0
-  for i = 1, #(text or "") do
-    hash = (hash * 31 + string.byte(text, i)) % 360
-  end
-
-  -- Convert hue to RGB
-  local h = hash / 360
-  local s = 0.5
-  local l = 0.4
-
-  local function hue2rgb(p, q, t)
-    if t < 0 then t = t + 1 end
-    if t > 1 then t = t - 1 end
-    if t < 1/6 then return p + (q - p) * 6 * t end
-    if t < 1/2 then return q end
-    if t < 2/3 then return p + (q - p) * (2/3 - t) * 6 end
-    return p
-  end
-
-  local q = l < 0.5 and l * (1 + s) or l + s - l * s
-  local p = 2 * l - q
-
-  local r = hue2rgb(p, q, h + 1/3)
-  local g = hue2rgb(p, q, h)
-  local b = hue2rgb(p, q, h - 1/3)
-
-  -- Create canvas and render to image
   local canvas = hs.canvas.new({x = 0, y = 0, w = size, h = size})
 
   canvas:insertElement({
     type = "rectangle",
     action = "fill",
     frame = {x = 0, y = 0, w = size, h = size},
-    fillColor = {red = r, green = g, blue = b, alpha = 1.0},
+    fillColor = bgColor,
     roundedRectRadii = {xRadius = 8, yRadius = 8},
   })
 

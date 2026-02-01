@@ -3,6 +3,8 @@
 --- Icon utilities for creating hs.image icons.
 --- Replaces GridCraft's HTML-based icons with native images.
 
+local Color = dofile(hs.spoons.resourcePath("Color.lua"))
+
 local M = {}
 
 --- Load icon from a PNG/image file
@@ -53,35 +55,8 @@ function M.placeholder(text, symbol, bgColor)
   local size = 64
   local displayChar = symbol or string.upper(string.sub(text or "?", 1, 1))
 
-  -- Generate color from text hash if not provided
   if not bgColor then
-    local hash = 0
-    for i = 1, #(text or "") do
-      hash = (hash * 31 + string.byte(text, i)) % 360
-    end
-
-    local h = hash / 360
-    local s = 0.5
-    local l = 0.4
-
-    local function hue2rgb(p, q, t)
-      if t < 0 then t = t + 1 end
-      if t > 1 then t = t - 1 end
-      if t < 1/6 then return p + (q - p) * 6 * t end
-      if t < 1/2 then return q end
-      if t < 2/3 then return p + (q - p) * (2/3 - t) * 6 end
-      return p
-    end
-
-    local q = l < 0.5 and l * (1 + s) or l + s - l * s
-    local p = 2 * l - q
-
-    bgColor = {
-      red = hue2rgb(p, q, h + 1/3),
-      green = hue2rgb(p, q, h),
-      blue = hue2rgb(p, q, h - 1/3),
-      alpha = 1.0,
-    }
+    bgColor = Color.fromString(text)
   end
 
   local canvas = hs.canvas.new({x = 0, y = 0, w = size, h = size})
@@ -124,22 +99,10 @@ function M.fromText(label, options)
 
   -- Handle hex colors
   if bgColor.hex then
-    local hex = bgColor.hex:gsub("#", "")
-    bgColor = {
-      red = tonumber(hex:sub(1, 2), 16) / 255,
-      green = tonumber(hex:sub(3, 4), 16) / 255,
-      blue = tonumber(hex:sub(5, 6), 16) / 255,
-      alpha = 1.0,
-    }
+    bgColor = Color.fromHex(bgColor.hex)
   end
   if textColor.hex then
-    local hex = textColor.hex:gsub("#", "")
-    textColor = {
-      red = tonumber(hex:sub(1, 2), 16) / 255,
-      green = tonumber(hex:sub(3, 4), 16) / 255,
-      blue = tonumber(hex:sub(5, 6), 16) / 255,
-      alpha = 1.0,
-    }
+    textColor = Color.fromHex(textColor.hex)
   end
 
   local canvas = hs.canvas.new({x = 0, y = 0, w = size, h = size})
