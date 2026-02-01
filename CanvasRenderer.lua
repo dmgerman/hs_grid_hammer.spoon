@@ -114,13 +114,16 @@ end
 --- @param alpha number Alpha multiplier
 --- @return table, table Background element, letter element
 local function createPlaceholderIcon(keyId, theme, iconX, iconY, text, alpha)
+  local size = theme.iconSize
+  local offsetY = size * theme.placeholderTextOffsetRatio
+
   local bgElement = {
     id = keyId .. "_icon_bg",
     type = "rectangle",
     action = "fill",
-    frame = {x = iconX, y = iconY, w = theme.iconSize, h = theme.iconSize},
+    frame = {x = iconX, y = iconY, w = size, h = size},
     fillColor = Color.fromString(text),
-    roundedRectRadii = {xRadius = 8, yRadius = 8},
+    roundedRectRadii = {xRadius = theme.iconCornerRadius, yRadius = theme.iconCornerRadius},
     imageAlpha = alpha,
   }
 
@@ -128,12 +131,12 @@ local function createPlaceholderIcon(keyId, theme, iconX, iconY, text, alpha)
   local letterElement = {
     id = keyId .. "_icon_letter",
     type = "text",
-    frame = {x = iconX, y = iconY + 12, w = theme.iconSize, h = theme.iconSize - 12},
+    frame = {x = iconX, y = iconY + offsetY, w = size, h = size - offsetY},
     text = letter,
     textAlignment = "center",
     textColor = {white = 1.0, alpha = alpha},
-    textFont = "Helvetica Bold",
-    textSize = 32,
+    textFont = theme.placeholderFont,
+    textSize = size * theme.placeholderTextRatio,
   }
 
   return bgElement, letterElement
@@ -318,7 +321,7 @@ function M:buildElements()
     action = "fill",
     frame = {x = 0, y = 0, w = width, h = height},
     fillColor = t.backgroundColor,
-    roundedRectRadii = {xRadius = 10, yRadius = 10},
+    roundedRectRadii = {xRadius = t.gridCornerRadius, yRadius = t.gridCornerRadius},
   })
 
   -- Cells

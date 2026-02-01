@@ -3,7 +3,8 @@
 --- Async icon loading with LRU caching.
 --- Prevents UI blocking during icon loading and reduces memory usage.
 
-local Color = dofile(hs.spoons.resourcePath("Color.lua"))
+local Icon = dofile(hs.spoons.resourcePath("Icon.lua"))
+local Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
 
 local M = {}
 
@@ -13,7 +14,6 @@ local M = {}
 
 local MAX_CACHE_SIZE = 100
 local EVICTION_COUNT = 20
-local ICON_SIZE = 64
 
 -- Cache storage: cache[key] = {image = hs.image, lastUsed = timestamp}
 local cache = {}
@@ -55,24 +55,15 @@ local function evictLRU()
   stats.evictions = stats.evictions + evicted
 end
 
---- Common app search directories
-local APP_SEARCH_PATHS = {
-  "/Applications",
-  "/System/Applications",
-  "/Applications/Utilities",
-}
-
 --- Find application path by name
 --- @param appName string Application name
 --- @return string|nil Path to app bundle or nil
 local function findAppPath(appName)
-  -- Try running app first
   local app = hs.application.find(appName)
   if app then
     return app:path()
   end
 
-  -- Search common locations
   local home = os.getenv("HOME")
   local searchPaths = {
     "/Applications/" .. appName .. ".app",
@@ -94,11 +85,7 @@ end
 --- @param path string Path to file/app
 --- @return hs.image|nil Resized image or nil
 local function loadIconFromPath(path)
-  local image = hs.image.iconForFile(path)
-  if image then
-    return image:setSize({w = ICON_SIZE, h = ICON_SIZE})
-  end
-  return nil
+  return Icon.fromPath(path)
 end
 
 --------------------------------------------------------------------------------
@@ -196,40 +183,14 @@ function M.loadAppIconAsync(appName, callback)
   end)
 end
 
---- Generate a placeholder icon with colored background and letter
+--- Generate a placeholder icon with colored background and letter.
+--- Delegates to Icon.placeholder() - this is a convenience wrapper.
 ---
 --- @param text string Text to derive color and letter from
---- @param size number Optional size (default 64)
+--- @param size number|nil Optional size (default from theme)
 --- @return hs.image Placeholder image
 function M.placeholder(text, size)
-  size = size or ICON_SIZE
-  local letter = string.upper(string.sub(text or "?", 1, 1))
-  local bgColor = Color.fromString(text)
-
-  local canvas = hs.canvas.new({x = 0, y = 0, w = size, h = size})
-
-  canvas:insertElement({
-    type = "rectangle",
-    action = "fill",
-    frame = {x = 0, y = 0, w = size, h = size},
-    fillColor = bgColor,
-    roundedRectRadii = {xRadius = 8, yRadius = 8},
-  })
-
-  canvas:insertElement({
-    type = "text",
-    frame = {x = 0, y = size * 0.2, w = size, h = size * 0.7},
-    text = letter,
-    textAlignment = "center",
-    textColor = {white = 1.0},
-    textFont = "Helvetica Bold",
-    textSize = size * 0.5,
-  })
-
-  local image = canvas:imageFromCanvas()
-  canvas:delete()
-
-  return image
+  return Icon.placeholder(text, nil, {size = size})
 end
 
 --- Clear the cache

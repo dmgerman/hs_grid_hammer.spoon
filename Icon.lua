@@ -2,65 +2,94 @@
 ---
 --- Icon utilities for creating hs.image icons.
 --- Replaces GridCraft's HTML-based icons with native images.
+---
+--- This module is the single source for all icon generation, including
+--- placeholder icons. Other modules should call these functions rather
+--- than duplicating rendering logic.
 
 local Color = dofile(hs.spoons.resourcePath("Color.lua"))
+local Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
 
 local M = {}
 
--- Standard icon size
-local ICON_SIZE = 64
+--------------------------------------------------------------------------------
+-- Icon loading functions
+--------------------------------------------------------------------------------
 
 --- Load icon from a PNG/image file
 --- @param filePath string Path to the image file
+--- @param size number|nil Optional size (default from theme)
 --- @return hs.image|nil The loaded image or nil
-function M.fromFile(filePath)
+function M.fromFile(filePath, size)
   if not filePath then return nil end
 
+  size = size or Theme.default.iconSize
   local image = hs.image.imageFromPath(filePath)
   if image then
-    return image:setSize({w = ICON_SIZE, h = ICON_SIZE})
+    return image:setSize({w = size, h = size})
   end
   return nil
 end
 
 --- Get icon for a macOS application or file
 --- @param path string Path to app bundle or file
+--- @param size number|nil Optional size (default from theme)
 --- @return hs.image|nil The icon image or nil
-function M.fromPath(path)
+function M.fromPath(path, size)
   if not path then return nil end
 
+  size = size or Theme.default.iconSize
   local image = hs.image.iconForFile(path)
   if image then
-    return image:setSize({w = ICON_SIZE, h = ICON_SIZE})
+    return image:setSize({w = size, h = size})
   end
   return nil
 end
 
 --- Get icon for an application by bundle ID
 --- @param bundleID string macOS bundle identifier (e.g., "com.apple.Safari")
+--- @param size number|nil Optional size (default from theme)
 --- @return hs.image|nil The icon image or nil
-function M.fromBundleID(bundleID)
+function M.fromBundleID(bundleID, size)
   if not bundleID then return nil end
 
+  size = size or Theme.default.iconSize
   local image = hs.image.imageFromAppBundle(bundleID)
   if image then
-    return image:setSize({w = ICON_SIZE, h = ICON_SIZE})
+    return image:setSize({w = size, h = size})
   end
   return nil
 end
 
---- Create a placeholder icon with colored background and symbol/letter
---- @param text string Text to derive color and display character from
---- @param symbol string Optional symbol to display (defaults to first letter of text)
---- @param bgColor table Optional background color {red, green, blue, alpha}
---- @return hs.image The generated placeholder image
-function M.placeholder(text, symbol, bgColor)
-  local size = ICON_SIZE
-  local displayChar = symbol or string.upper(string.sub(text or "?", 1, 1))
+--------------------------------------------------------------------------------
+-- Placeholder icon generation
+--------------------------------------------------------------------------------
 
-  if not bgColor then
-    bgColor = Color.fromString(text)
-  end
+--- Create a placeholder icon with colored background and symbol/letter.
+--- This is the canonical implementation - other modules should call this.
+---
+--- @param text string Text to derive color and display character from
+--- @param symbol string|nil Optional symbol to display (defaults to first letter)
+--- @param options table|nil Optional settings:
+---   - bgColor: Background color table {red, green, blue, alpha}
+---   - size: Icon size (default from theme)
+---   - font: Font name (default from theme)
+---   - textRatio: Text size as ratio of icon size (default from theme)
+---   - offsetRatio: Vertical offset as ratio of icon size (default from theme)
+---   - cornerRadius: Corner radius (default from theme)
+--- @return hs.image The generated placeholder image
+function M.placeholder(text, symbol, options)
+  options = options or {}
+  local t = Theme.default
+
+  local size = options.size or t.iconSize
+  local font = options.font or t.placeholderFont
+  local textRatio = options.textRatio or t.placeholderTextRatio
+  local offsetRatio = options.offsetRatio or t.placeholderTextOffsetRatio
+  local cornerRadius = options.cornerRadius or t.iconCornerRadius
+
+  local displayChar = symbol or string.upper(string.sub(text or "?", 1, 1))
+  local bgColor = options.bgColor or Color.fromString(text)
 
   local canvas = hs.canvas.new({x = 0, y = 0, w = size, h = size})
 
@@ -69,17 +98,17 @@ function M.placeholder(text, symbol, bgColor)
     action = "fill",
     frame = {x = 0, y = 0, w = size, h = size},
     fillColor = bgColor,
-    roundedRectRadii = {xRadius = 8, yRadius = 8},
+    roundedRectRadii = {xRadius = cornerRadius, yRadius = cornerRadius},
   })
 
   canvas:insertElement({
     type = "text",
-    frame = {x = 0, y = size * 0.15, w = size, h = size * 0.7},
+    frame = {x = 0, y = size * offsetRatio, w = size, h = size * (1 - offsetRatio)},
     text = displayChar,
     textAlignment = "center",
     textColor = {white = 1.0},
-    textFont = "Helvetica Bold",
-    textSize = size * 0.5,
+    textFont = font,
+    textSize = size * textRatio,
   })
 
   local image = canvas:imageFromCanvas()
@@ -88,17 +117,27 @@ function M.placeholder(text, symbol, bgColor)
   return image
 end
 
+--------------------------------------------------------------------------------
+-- Text-based icons
+--------------------------------------------------------------------------------
+
 --- Create a text-based icon (like StreamDeck style)
 --- @param label string Text to display on the icon
---- @param options table Optional settings: backgroundColor, textColor, fontSize
+--- @param options table|nil Optional settings:
+---   - backgroundColor: Background color (default from theme)
+---   - textColor: Text color (default white)
+---   - fontSize: Font size (default from theme)
+---   - size: Icon size (default from theme)
 --- @return hs.image The generated image
 function M.fromText(label, options)
   options = options or {}
-  local size = ICON_SIZE
+  local t = Theme.default
 
-  local bgColor = options.backgroundColor or {red = 0.1, green = 0.1, blue = 0.1, alpha = 1.0}
+  local size = options.size or t.iconSize
+  local bgColor = options.backgroundColor or t.textIconBackground
   local textColor = options.textColor or {white = 1.0}
-  local fontSize = options.fontSize or 12
+  local fontSize = options.fontSize or t.textIconDefaultSize
+  local cornerRadius = t.textIconCornerRadius
 
   -- Handle hex colors
   if bgColor.hex then
@@ -115,7 +154,7 @@ function M.fromText(label, options)
     action = "fill",
     frame = {x = 0, y = 0, w = size, h = size},
     fillColor = bgColor,
-    roundedRectRadii = {xRadius = 6, yRadius = 6},
+    roundedRectRadii = {xRadius = cornerRadius, yRadius = cornerRadius},
   })
 
   -- Handle multi-line text
@@ -135,7 +174,7 @@ function M.fromText(label, options)
       text = line,
       textAlignment = "center",
       textColor = textColor,
-      textFont = "Helvetica Bold",
+      textFont = t.textIconFont,
       textSize = fontSize,
     })
   end
@@ -146,49 +185,56 @@ function M.fromText(label, options)
   return image
 end
 
---- Predefined icon symbols for common actions (Phosphor icon replacements)
+--------------------------------------------------------------------------------
+-- Symbol icons (Phosphor replacements)
+--------------------------------------------------------------------------------
+
+--- Predefined icon symbols for common actions
 --- These use Unicode symbols that render well at icon sizes
 M.symbols = {
-  ["app-window"] = "☐",      -- Window/app
-  ["monitor"] = "🖥",         -- Monitor/display
-  ["chat"] = "💬",            -- Chat/message
-  ["translate"] = "文",       -- Translate/language
-  ["speaker-high"] = "🔊",    -- Audio/speaker
-  ["globe"] = "🌐",           -- Web/globe
-  ["folder"] = "📁",          -- Folder
-  ["file"] = "📄",            -- File
-  ["terminal"] = ">_",        -- Terminal
-  ["mail"] = "✉",             -- Email
-  ["calendar"] = "📅",        -- Calendar
-  ["search"] = "🔍",          -- Search
-  ["settings"] = "⚙",         -- Settings/gear
-  ["music"] = "♫",            -- Music
-  ["video"] = "▶",            -- Video/play
-  ["microphone"] = "🎤",      -- Microphone
-  ["keyboard"] = "⌨",         -- Keyboard
+  ["app-window"] = "☐",
+  ["monitor"] = "🖥",
+  ["chat"] = "💬",
+  ["translate"] = "文",
+  ["speaker-high"] = "🔊",
+  ["globe"] = "🌐",
+  ["folder"] = "📁",
+  ["file"] = "📄",
+  ["terminal"] = ">_",
+  ["mail"] = "✉",
+  ["calendar"] = "📅",
+  ["search"] = "🔍",
+  ["settings"] = "⚙",
+  ["music"] = "♫",
+  ["video"] = "▶",
+  ["microphone"] = "🎤",
+  ["keyboard"] = "⌨",
 }
 
 --- Create an icon using a predefined symbol (Phosphor replacement)
 --- @param name string Symbol name from M.symbols
---- @param weight string Ignored (for GridCraft API compatibility)
---- @return hs.image|nil The generated icon or nil if symbol not found
+--- @param weight string|nil Ignored (for GridCraft API compatibility)
+--- @return hs.image The generated icon
 function M.symbol(name, weight)
   local sym = M.symbols[name]
   if not sym then
-    -- Fall back to first letter of name
     sym = string.upper(string.sub(name or "?", 1, 1))
   end
   return M.placeholder(name, sym)
 end
 
 --- Compatibility alias for GridCraft's Icon.phosphor()
---- Creates a placeholder icon with a symbol
 M.phosphor = M.symbol
 
+--------------------------------------------------------------------------------
+-- Utility icons
+--------------------------------------------------------------------------------
+
 --- Create an empty/transparent icon
---- @return hs.image A transparent 64x64 image
-function M.empty()
-  local size = ICON_SIZE
+--- @param size number|nil Optional size (default from theme)
+--- @return hs.image A transparent image
+function M.empty(size)
+  size = size or Theme.default.iconSize
   local canvas = hs.canvas.new({x = 0, y = 0, w = size, h = size})
 
   canvas:insertElement({
