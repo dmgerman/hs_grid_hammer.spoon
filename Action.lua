@@ -102,7 +102,14 @@ M.new = function(arg)
   elseif arg.submenu then
     -- Submenu container
     table.insert(action.classes, "submenu")
-    action.submenu = arg.submenu
+    -- Accept either a Grid object or an action table
+    if arg.submenu.modal then
+      -- Already a Grid object
+      action.submenu = arg.submenu
+    else
+      -- Action table - store for Grid.lua to create Grid object
+      action.submenuTable = arg.submenu
+    end
     -- Handler is set by Grid.lua when binding keys
   elseif arg.handler then
     -- Custom handler

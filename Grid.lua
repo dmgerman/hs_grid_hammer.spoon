@@ -56,6 +56,9 @@ function M.new(mods, key, actionTable, title, config, chooserKey)
   -- Track if we're currently showing
   grid.isShowing = false
 
+  -- Timer for delayed show (cancelled if user acts before delay)
+  grid.showTimer = nil
+
   --- Start the grid (enter modal and show canvas)
   function grid:start()
     self.modal:enter()
@@ -64,23 +67,48 @@ function M.new(mods, key, actionTable, title, config, chooserKey)
   --- Stop the grid (exit modal and hide canvas)
   --- @param selectedKeyId string Optional keyId that was selected
   function grid:stop(selectedKeyId)
+    -- Cancel pending show timer if exists
+    if self.showTimer then
+      self.showTimer:stop()
+      self.showTimer = nil
+    end
     if selectedKeyId then
       self.renderer:highlightCell(selectedKeyId)
     end
     self.modal:exit()
   end
 
-  --- Modal entered callback - show the canvas
+  --- Modal entered callback - show the canvas (with optional delay)
   function grid.modal:entered()
     grid.isShowing = true
-    grid.renderer:show()
 
-    -- Load icons asynchronously if IconLoader is available
-    local ok, IconLoader = pcall(function()
-      return dofile(hs.spoons.resourcePath("IconLoader.lua"))
-    end)
-    if ok and IconLoader then
-      grid:loadIconsAsync(IconLoader)
+    local showDelay = grid.config.showDelay or 0
+    if showDelay > 0 then
+      -- Delayed show - user can act before menu appears
+      grid.showTimer = hs.timer.doAfter(showDelay, function()
+        grid.showTimer = nil
+        if grid.isShowing then
+          grid.renderer:show()
+          -- Load icons after show
+          local ok, IconLoader = pcall(function()
+            return dofile(hs.spoons.resourcePath("IconLoader.lua"))
+          end)
+          if ok and IconLoader then
+            grid:loadIconsAsync(IconLoader)
+          end
+        end
+      end)
+    else
+      -- Immediate show
+      grid.renderer:show()
+
+      -- Load icons asynchronously if IconLoader is available
+      local ok, IconLoader = pcall(function()
+        return dofile(hs.spoons.resourcePath("IconLoader.lua"))
+      end)
+      if ok and IconLoader then
+        grid:loadIconsAsync(IconLoader)
+      end
     end
   end
 
@@ -118,23 +146,45 @@ function M.new(mods, key, actionTable, title, config, chooserKey)
   -- Bind all action keys
   for _, row in ipairs(actionTable) do
     for _, action in ipairs(row) do
-      if action.key and action.handler then
-        grid.modal:bind(action.mods or {}, action.key, function()
-          -- Handle submenu
-          if action.submenu then
-            grid:stop()
-            hs.timer.doAfter(grid.theme.fadeTime, function()
-              action.submenu:start()
-            end)
-          else
-            -- Execute handler and close
-            local keyId = action.keyId
-            grid:stop(keyId)
-            hs.timer.doAfter(grid.theme.fadeTime, function()
-              action.handler()
+      if action.key then
+        -- Convert submenuTable to Grid object if needed
+        if action.submenuTable and not action.submenu then
+          action.submenu = M.new(
+            nil,  -- No global trigger for submenus
+            nil,
+            action.submenuTable,
+            action.description or "Submenu",
+            grid.config,
+            grid.chooserKey
+          )
+          -- Bind parent's trigger key to close submenu (if parent has trigger)
+          if grid.triggerKey then
+            action.submenu.modal:bind(grid.triggerMods or {}, grid.triggerKey, function()
+              action.submenu:stop()
             end)
           end
-        end)
+        end
+
+        -- Bind the key
+        local hasAction = action.handler or action.submenu
+        if hasAction then
+          grid.modal:bind(action.mods or {}, action.key, function()
+            -- Handle submenu
+            if action.submenu then
+              grid:stop()
+              hs.timer.doAfter(grid.theme.fadeTime, function()
+                action.submenu:start()
+              end)
+            else
+              -- Execute handler and close
+              local keyId = action.keyId
+              grid:stop(keyId)
+              hs.timer.doAfter(grid.theme.fadeTime, function()
+                action.handler()
+              end)
+            end
+          end)
+        end
       end
     end
   end

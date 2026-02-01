@@ -34,6 +34,11 @@ M.Configuration = dofile(hs.spoons.resourcePath("Configuration.lua"))
 --- Theme definitions - access Theme.default or create with Theme.new()
 M.Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
 
+--- hs_grid_hammer.Icon
+--- Variable
+--- Icon utilities - create icons from files, bundle IDs, text, or symbols
+M.Icon = dofile(hs.spoons.resourcePath("Icon.lua"))
+
 --- hs_grid_hammer.IconLoader
 --- Variable
 --- Async icon loading with caching
