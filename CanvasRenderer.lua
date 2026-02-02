@@ -9,6 +9,9 @@ local Color = dofile(hs.spoons.resourcePath("Color.lua"))
 local M = {}
 M.__index = M
 
+-- Track pending canvas deletions for cleanup
+local pendingDeletes = {}
+
 --------------------------------------------------------------------------------
 -- Private helper functions
 --------------------------------------------------------------------------------
@@ -286,6 +289,16 @@ function M:buildCellElements(action, rowIdx, colIdx)
   cellIndexes.iconIndex = #elements + 1
   if action.icon then
     table.insert(elements, createIconImage(keyId, t, iconX, iconY, action.icon, alpha))
+  elseif isEmpty then
+    -- Empty cells get just a black square, no letter
+    table.insert(elements, {
+      id = keyId .. "_icon_bg",
+      type = "rectangle",
+      action = "fill",
+      frame = {x = iconX, y = iconY, w = t.iconSize, h = t.iconSize},
+      fillColor = colorWithAlpha(t.emptyCellIconColor, alpha),
+      roundedRectRadii = {xRadius = t.iconCornerRadius, yRadius = t.iconCornerRadius},
+    })
   else
     local text = action.description or action.key or "?"
     local bgEl, letterEl = createPlaceholderIcon(keyId, t, iconX, iconY, text, alpha)
@@ -359,6 +372,14 @@ end
 
 --- Build and show the canvas
 function M:show()
+  local t0 = hs.timer.absoluteTime()
+
+  -- Clean up any pending canvases from rapid show/hide
+  for _, c in ipairs(pendingDeletes) do
+    pcall(function() c:delete() end)
+  end
+  pendingDeletes = {}
+
   if self.canvas then
     self.canvas:delete()
   end
@@ -370,18 +391,42 @@ function M:show()
   self.canvas:level("overlay")
   self.canvas:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
 
-  for _, element in ipairs(self:buildElements()) do
-    self.canvas:insertElement(element)
-  end
+  local t1 = hs.timer.absoluteTime()
+  local elements = self:buildElements()
+  local t2 = hs.timer.absoluteTime()
 
+  -- Batch insert all elements at once (faster than individual inserts)
+  self.canvas:replaceElements(elements)
+
+  local t3 = hs.timer.absoluteTime()
   self.canvas:show(self.theme.fadeTime)
+
+  local setupMs = (t1 - t0) / 1000000
+  local buildMs = (t2 - t1) / 1000000
+  local insertMs = (t3 - t2) / 1000000
+  print(string.format("[CanvasRenderer] setup=%.1fms build=%.1fms insert=%.1fms pending=%d",
+    setupMs, buildMs, insertMs, #pendingDeletes))
 end
 
 --- Hide and delete the canvas
 function M:hide()
   if self.canvas then
-    self.canvas:delete(self.theme.fadeTime)
+    local canvasToDelete = self.canvas
     self.canvas = nil
+    -- Track pending delete
+    table.insert(pendingDeletes, canvasToDelete)
+    -- Delete after fade completes to ensure proper cleanup
+    hs.timer.doAfter(self.theme.fadeTime + 0.05, function()
+      canvasToDelete:delete()
+      -- Remove from pending list
+      for i, c in ipairs(pendingDeletes) do
+        if c == canvasToDelete then
+          table.remove(pendingDeletes, i)
+          break
+        end
+      end
+    end)
+    canvasToDelete:hide(self.theme.fadeTime)
   end
 end
 

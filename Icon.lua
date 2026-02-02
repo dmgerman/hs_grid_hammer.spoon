@@ -163,14 +163,16 @@ function M.fromText(label, options)
     table.insert(lines, line)
   end
 
-  local lineHeight = fontSize + 4
+  local lineSpacing = t.textIconLineSpacing
+  local margin = t.textIconMargin
+  local lineHeight = fontSize + lineSpacing
   local totalHeight = #lines * lineHeight
   local startY = (size - totalHeight) / 2
 
   for i, line in ipairs(lines) do
     canvas:insertElement({
       type = "text",
-      frame = {x = 2, y = startY + (i - 1) * lineHeight, w = size - 4, h = lineHeight},
+      frame = {x = margin, y = startY + (i - 1) * lineHeight, w = size - margin * 2, h = lineHeight},
       text = line,
       textAlignment = "center",
       textColor = textColor,

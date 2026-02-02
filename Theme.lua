@@ -10,7 +10,7 @@ local M = {}
 --- Default theme matching GridCraft visual style
 M.default = {
   -- Grid overlay background
-  backgroundColor = {red = 0.1, green = 0.1, blue = 0.1, alpha = 0.95},
+  backgroundColor = {red = 0.1, green = 0.1, blue = 0.1, alpha = 0.1},
   gridCornerRadius = 10,
 
   -- Cell appearance
@@ -27,6 +27,7 @@ M.default = {
 
   -- Empty cell styling
   cellEmptyAlpha = 0.5,
+  emptyCellIconColor = {red = 0, green = 0, blue = 0, alpha = 1.0},
 
   -- Icon settings
   iconSize = 64,
@@ -41,7 +42,9 @@ M.default = {
   -- Text icon settings (multi-line text icons)
   textIconCornerRadius = 6,
   textIconFont = "Helvetica Bold",
-  textIconDefaultSize = 12,
+  textIconDefaultSize = 20,
+  textIconLineSpacing = 2,   -- Extra space between lines (was 4)
+  textIconMargin = 1,        -- Horizontal margin (was 2)
   textIconBackground = {red = 0.1, green = 0.1, blue = 0.1, alpha = 1.0},
 
   -- Text colors

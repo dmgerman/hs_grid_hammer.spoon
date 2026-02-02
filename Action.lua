@@ -26,7 +26,7 @@ end
 local function handleEmpty(action, arg)
   action.empty = true
   action.handler = function() end
-  action.description = arg.description or "No action"
+  action.description = arg.description  -- nil = not rendered
   table.insert(action.classes, "empty")
 end
 
@@ -141,10 +141,10 @@ function M.new(arg)
   }
 
   -- Dispatch to appropriate handler based on action type
-  if not action.key then
-    handleNoKey(action, arg)
-  elseif arg.empty then
+  if arg.empty then
     handleEmpty(action, arg)
+  elseif not action.key then
+    handleNoKey(action, arg)
   elseif arg.application then
     handleApplication(action, arg)
   elseif arg.file then

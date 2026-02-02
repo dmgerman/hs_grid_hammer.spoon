@@ -16,6 +16,9 @@ local M = {}
 local Grid = {}
 Grid.__index = Grid
 
+-- Diagnostic counter
+local showCount = 0
+
 --------------------------------------------------------------------------------
 -- Private helper functions
 --------------------------------------------------------------------------------
@@ -204,11 +207,26 @@ end
 
 --- Show renderer and load icons asynchronously
 function Grid:showAndLoadIcons()
+  showCount = showCount + 1
+  local startTime = hs.timer.absoluteTime()
+
   self.renderer:show()
+
+  local showTime = hs.timer.absoluteTime()
+  local showMs = (showTime - startTime) / 1000000
 
   local loader = getIconLoader()
   if loader then
     self:loadIconsAsync(loader)
+  end
+
+  local totalMs = (hs.timer.absoluteTime() - startTime) / 1000000
+  local memKB = collectgarbage("count")
+  print(string.format("[hs_grid_hammer] #%d show=%.1fms total=%.1fms mem=%.0fKB", showCount, showMs, totalMs, memKB))
+
+  -- Periodic GC to prevent memory growth
+  if showCount % 10 == 0 then
+    collectgarbage("collect")
   end
 end
 
@@ -218,14 +236,17 @@ function Grid:loadIconsAsync(loader)
   forEachAction(self.actionTable, function(action)
     if not action.key then return end
     if action.icon then return end
+    if action.iconLoaded then return end  -- Already loaded in previous show
 
     local iconPath = action.applicationPath or action.file
     if not iconPath then return end
 
     local keyId = action.keyId
     local grid = self
+    action.iconLoaded = true  -- Mark as loaded (even if loading fails)
     loader.loadAsync(iconPath, function(image)
       if image and grid.isShowing then
+        action.icon = image  -- Store for future reference
         grid.renderer:updateIcon(keyId, image)
       end
     end)
