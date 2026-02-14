@@ -51,10 +51,12 @@ end
 --- Create the modal hotkey
 --- @param mods table|nil Modifier keys
 --- @param key string|nil Trigger key
+--- @param description string|nil Description for the hotkey
 --- @return hs.hotkey.modal Modal instance
-local function createModal(mods, key)
+local function createModal(mods, key, description)
   if mods and key then
-    return hs.hotkey.modal.new(mods, key)
+    local desc = description and (description .. " [Grid]") or nil
+    return hs.hotkey.modal.new(mods, key, desc)
   end
   return hs.hotkey.modal.new()
 end
@@ -126,9 +128,12 @@ local function bindActionKeys(grid)
     local hasAction = action.handler or action.submenu
     if not hasAction then return end
 
+    local description = (action.description or "Unknown") .. " [Grid]"
+
     grid.modal:bind(
       action.mods or {},
       action.key,
+      description,
       createActionHandler(grid, action)
     )
   end)
@@ -328,7 +333,7 @@ function M.new(mods, key, actionTable, title, config, chooserKey)
   -- Build components
   grid.keyMap = KeyMap.new()
   initializeActions(actionTable, grid.keyMap)
-  grid.modal = createModal(mods, key)
+  grid.modal = createModal(mods, key, title)
   grid.renderer = CanvasRenderer.new(actionTable, grid.theme)
 
   -- Bind keys and callbacks
