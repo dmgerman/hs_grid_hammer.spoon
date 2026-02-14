@@ -1,0 +1,534 @@
+#+TITLE: hs_grid_hammer
+#+AUTHOR: Daniel German
+#+OPTIONS: toc:2
+
+* Overview
+
+=hs_grid_hammer= is a high-performance modal menu system for Hammerspoon that creates keyboard-driven grid menus. It's a reimplementation of [[https://github.com/mrled/GridCraft][GridCraft]] by [[https://github.com/mrled][Micah R Ledbetter]], using native canvas rendering instead of WebView and O(1) key lookup for better performance.
+
+** Credit
+
+This spoon is based on the excellent [[https://github.com/mrled/GridCraft][GridCraft]] by Micah R Ledbetter. The core concept and API design are derived from that work, reimplemented with performance optimizations using native Hammerspoon canvas rendering.
+
+** Example
+
+[[file:example-menu.png]]
+
+*Example application launcher grid* showing a keyboard-driven menu with application icons, keyboard shortcuts, and organized layout.
+
+** Features
+
+- Fast native canvas rendering (no WebView overhead)
+- Modal keyboard navigation with visual grid interface
+- Support for application launching, file opening, and custom actions
+- Nested submenus for organizing complex workflows
+- Searchable chooser mode for quick filtering
+- Customizable themes and icons
+- Modifier key support (shift, cmd, ctrl, alt)
+
+* Installation
+
+1. Clone or download this spoon to your Hammerspoon Spoons directory:
+   #+begin_src sh
+   cd ~/.hammerspoon/Spoons
+   git clone <repository-url> hs_grid_hammer.spoon
+   #+end_src
+
+2. Load the spoon in your =~/.hammerspoon/init.lua=:
+   #+begin_src lua
+   gh = hs.loadSpoon("hs_grid_hammer")
+   #+end_src
+
+* Basic Usage
+
+** Simple Grid Example
+
+Create a basic 2x2 grid menu:
+
+#+begin_src lua
+local gh = hs.loadSpoon("hs_grid_hammer")
+
+local myMenu = {
+  {
+    gh.Action.new({ key = "e", application = "Terminal", description = "Terminal" }),
+    gh.Action.new({ key = "s", application = "Safari", description = "Safari" }),
+  },
+  {
+    gh.Action.new({ key = "f", application = "Finder", description = "Finder" }),
+    gh.Action.new({ key = "c", application = "Google Chrome", description = "Chrome" }),
+  },
+}
+
+-- Create grid bound to Cmd+Alt+Ctrl+G
+gh.Grid.new(
+  {"cmd", "alt", "ctrl"},  -- modifier keys
+  "g",                      -- trigger key
+  myMenu,                   -- action table
+  "My Apps"                 -- title
+)
+#+end_src
+
+Press =Cmd+Alt+Ctrl+G= to show the grid, then press =e=, =s=, =f=, or =c= to launch the corresponding application. Press =ESC= to close the menu.
+
+** Grid.new() Parameters
+
+The =Grid.new()= function accepts these parameters:
+
+#+begin_src lua
+gh.Grid.new(mods, key, actionTable, title, config, chooserKey)
+#+end_src
+
+- =mods= (table): Modifier keys, e.g., ={"cmd", "ctrl"}=, ={"alt"}=
+- =key= (string): The trigger key (e.g., ="g"=, ="w"=)
+- =actionTable= (table): 2D array of actions (rows and columns)
+- =title= (string): Menu title displayed at the top
+- =config= (optional): Configuration object (see Configuration section)
+- =chooserKey= (optional string): Key to trigger searchable chooser mode (e.g., ="c"=)
+
+* Creating Actions
+
+Actions define what happens when you press a key in the grid. The =Action.new()= function accepts a table with these options:
+
+** Action Options
+
+| Option        | Type       | Description                                  |
+|---------------+------------+----------------------------------------------|
+| =key=         | string     | Hotkey to trigger (required)                 |
+| =mods=        | table      | Modifier keys (e.g., ={"shift"}=)           |
+| =description= | string     | Label shown in the cell                      |
+| =application= | string     | Application name to launch/switch to         |
+| =file=        | string     | File or folder path to open                  |
+| =handler=     | function   | Custom function to execute                   |
+| =icon=        | hs.image   | Custom icon (see Icon Creation)              |
+| =submenu=     | table      | 2D action table for nested submenu           |
+| =empty=       | boolean    | Mark as placeholder (invisible if no name)   |
+
+** Application Launcher
+
+Launch or switch to an application:
+
+#+begin_src lua
+gh.Action.new({
+  key = "e",
+  application = "Emacs",
+  description = "Emacs"
+})
+#+end_src
+
+** File/Folder Opener
+
+Open a file or folder:
+
+#+begin_src lua
+gh.Action.new({
+  key = "d",
+  file = "~/Documents",
+  description = "Documents"
+})
+#+end_src
+
+** Custom Function
+
+Execute any Lua function:
+
+#+begin_src lua
+gh.Action.new({
+  key = "h",
+  handler = function()
+    hs.alert.show("Hello, World!")
+  end,
+  description = "Say Hello"
+})
+#+end_src
+
+** Submenu Navigation
+
+Create nested menus:
+
+#+begin_src lua
+local submenu = {
+  {
+    gh.Action.new({ key = "1", handler = function() hs.alert("Option 1") end, description = "Option 1" }),
+    gh.Action.new({ key = "2", handler = function() hs.alert("Option 2") end, description = "Option 2" }),
+  }
+}
+
+gh.Action.new({
+  key = "s",
+  submenu = submenu,
+  description = "Submenu",
+  icon = gh.Icon.symbol("folder")
+})
+#+end_src
+
+** Empty Placeholders
+
+Create spacing in your grid:
+
+#+begin_src lua
+-- Invisible spacer (not rendered)
+gh.Action.new({ empty = true })
+
+-- Visible disabled cell
+gh.Action.new({ empty = true, description = "Disabled" })
+#+end_src
+
+** Using Modifiers
+
+Actions can require modifier keys:
+
+#+begin_src lua
+gh.Action.new({
+  key = "m",
+  mods = "shift",  -- or {"shift"} for multiple
+  handler = function() hs.alert("Shift+M pressed!") end,
+  description = "With Shift"
+})
+#+end_src
+
+* Icon Creation
+
+The =Icon= module provides several ways to create icons for your actions.
+
+** From Application Bundle ID
+
+Get the system icon for an application:
+
+#+begin_src lua
+local icon = gh.Icon.fromBundleID("org.gnu.Emacs")
+local icon2 = gh.Icon.fromBundleID("com.google.Chrome")
+#+end_src
+
+** From Text
+
+Generate a text-based icon:
+
+#+begin_src lua
+local icon = gh.Icon.fromText("Edit")
+local icon2 = gh.Icon.fromText("Save\nFile")  -- Multi-line text
+#+end_src
+
+** From Image File
+
+Load an icon from a PNG or JPG file:
+
+#+begin_src lua
+local icon = gh.Icon.fromFile("/path/to/icon.png")
+local icon2 = gh.Icon.fromFile(os.getenv("HOME") .. "/.hammerspoon/icons/gmail.png")
+#+end_src
+
+** From File Path
+
+Get the icon associated with a file or folder:
+
+#+begin_src lua
+local icon = gh.Icon.fromPath("~/Documents")
+local icon2 = gh.Icon.fromPath("/Applications/Safari.app")
+#+end_src
+
+** Predefined Symbols
+
+Use built-in symbol icons:
+
+#+begin_src lua
+local icon = gh.Icon.symbol("folder")
+local icon2 = gh.Icon.symbol("globe")
+local icon3 = gh.Icon.symbol("terminal")
+#+end_src
+
+Available symbols: =app-window=, =monitor=, =chat=, =translate=, =speaker-high=, =globe=, =folder=, =file=, =terminal=, =mail=, =calendar=, =search=, =settings=, =music=, =video=, =microphone=, =keyboard=
+
+** Placeholder Icons
+
+Create colored placeholder icons:
+
+#+begin_src lua
+local icon = gh.Icon.placeholder("AB", nil, {red=0.5, green=0.5, blue=0.8})
+#+end_src
+
+** Empty Icon
+
+Create a transparent icon:
+
+#+begin_src lua
+local icon = gh.Icon.empty()
+#+end_src
+
+* Configuration
+
+Customize grid behavior by passing a configuration object to =Grid.new()=:
+
+#+begin_src lua
+local config = gh.Configuration.new({
+  showDelay = 0.2,      -- Seconds to wait before showing grid (default: 0)
+  animationDelay = 0.05 -- Seconds to wait before hiding for visual feedback (default: 0.05)
+})
+
+gh.Grid.new({"cmd", "ctrl"}, "g", myMenu, "My Grid", config)
+#+end_src
+
+** Configuration Options
+
+| Option           | Type   | Default | Description                                |
+|------------------+--------+---------+--------------------------------------------|
+| =showDelay=      | number | 0       | Delay in seconds before showing the grid   |
+| =animationDelay= | number | 0.05    | Delay in seconds before hiding the grid    |
+| =theme=          | table  | nil     | Custom theme overrides (see Theme section) |
+
+* Theme Customization
+
+Customize the visual appearance of your grids by passing theme overrides in the configuration:
+
+#+begin_src lua
+local config = gh.Configuration.new({
+  theme = {
+    backgroundColor = {red=0.1, green=0.1, blue=0.15, alpha=0.95},
+    cellBackground = {red=0.2, green=0.2, blue=0.25, alpha=1.0},
+    cellWidth = 120,
+    cellHeight = 100,
+    iconSize = 48,
+    fadeTime = 0.2
+  }
+})
+
+gh.Grid.new({"cmd"}, "g", myMenu, "Custom Theme", config)
+#+end_src
+
+** Available Theme Options
+
+| Option               | Type   | Description                           |
+|----------------------+--------+---------------------------------------|
+| =backgroundColor=    | table  | Menu background color (RGBA)          |
+| =cellBackground=     | table  | Cell background color (RGBA)          |
+| =cellHoverBg=        | table  | Cell hover background color           |
+| =cellTextColor=      | table  | Cell text color                       |
+| =cellWidth=          | number | Cell width in pixels                  |
+| =cellHeight=         | number | Cell height in pixels                 |
+| =cellPadding=        | number | Padding around cells                  |
+| =cellSpacing=        | number | Space between cells                   |
+| =cellCornerRadius=   | number | Corner radius for rounded cells       |
+| =iconSize=           | number | Icon size in pixels                   |
+| =fontSize=           | number | Description text font size            |
+| =titleFontSize=      | number | Title font size                       |
+| =fadeTime=           | number | Fade in/out animation duration        |
+| =borderWidth=        | number | Cell border width                     |
+| =borderColor=        | table  | Cell border color                     |
+| =titleColor=         | table  | Title text color                      |
+
+Colors are specified as tables with =red=, =green=, =blue=, and =alpha= components (0.0 to 1.0).
+
+* Practical Examples
+
+** Application Launcher
+
+#+begin_src lua
+local apps = {
+  {
+    gh.Action.new({ key = "e", application = "Emacs" }),
+    gh.Action.new({ key = "c", application = "Google Chrome" }),
+    gh.Action.new({ key = "t", application = "Terminal" }),
+  },
+  {
+    gh.Action.new({ key = "f", application = "Finder" }),
+    gh.Action.new({ key = "s", application = "Safari" }),
+    gh.Action.new({ key = "m", application = "Music" }),
+  }
+}
+
+gh.Grid.new({"alt"}, "q", apps, "Applications")
+#+end_src
+
+** Window Management Menu
+
+#+begin_src lua
+local windowMenu = {
+  {
+    gh.Action.new({
+      key = "h",
+      handler = function() spoon.WinWin:moveAndResize("halfleft") end,
+      description = "Left Half",
+      icon = gh.Icon.symbol("monitor")
+    }),
+    gh.Action.new({
+      key = "l",
+      handler = function() spoon.WinWin:moveAndResize("halfright") end,
+      description = "Right Half"
+    })
+  },
+  {
+    gh.Action.new({
+      key = "m",
+      handler = function() hs.window.focusedWindow():maximize() end,
+      description = "Maximize"
+    }),
+    gh.Action.new({
+      key = "f",
+      handler = function() hs.window.focusedWindow():toggleFullScreen() end,
+      description = "Full Screen"
+    })
+  }
+}
+
+gh.Grid.new({"alt"}, "w", windowMenu, "Window Management")
+#+end_src
+
+** URL Shortcuts
+
+#+begin_src lua
+function openURL(url)
+  return function()
+    hs.urlevent.openURL(url)
+  end
+end
+
+local webMenu = {
+  {
+    gh.Action.new({
+      key = "g",
+      handler = openURL("https://mail.google.com"),
+      description = "Gmail",
+      icon = gh.Icon.fromFile(os.getenv("HOME") .. "/.hammerspoon/icons/gmail.png")
+    }),
+    gh.Action.new({
+      key = "c",
+      handler = openURL("https://calendar.google.com"),
+      description = "Calendar"
+    }),
+  },
+  {
+    gh.Action.new({
+      key = "y",
+      handler = openURL("https://youtube.com"),
+      description = "YouTube"
+    }),
+    gh.Action.new({
+      key = "s",
+      handler = openURL("https://app.slack.com"),
+      description = "Slack"
+    }),
+  }
+}
+
+gh.Grid.new({"alt"}, "r", webMenu, "Web Shortcuts")
+#+end_src
+
+** Master Menu with Submenus
+
+#+begin_src lua
+-- Define submenus (apps, windows, etc.)
+local appsMenu = { -- ... your apps menu ... }
+local windowMenu = { -- ... your window menu ... }
+
+local masterMenu = {
+  {
+    gh.Action.new({
+      key = "a",
+      submenu = appsMenu,
+      description = "Applications",
+      icon = gh.Icon.symbol("app-window")
+    }),
+    gh.Action.new({
+      key = "w",
+      submenu = windowMenu,
+      description = "Windows",
+      icon = gh.Icon.symbol("monitor")
+    })
+  }
+}
+
+-- With chooser support (press 'c' to search)
+gh.Grid.new({"cmd", "alt", "ctrl"}, "g", masterMenu, "Master Menu", nil, "c")
+#+end_src
+
+* Searchable Chooser Mode
+
+Add a sixth parameter to =Grid.new()= to enable searchable chooser mode:
+
+#+begin_src lua
+gh.Grid.new({"cmd"}, "g", myMenu, "My Menu", nil, "c")
+#+end_src
+
+Now when the grid is open, pressing =c= will switch to a searchable list view where you can type to filter actions.
+
+* Tips and Tricks
+
+** Helper Functions
+
+Create helper functions to reduce boilerplate:
+
+#+begin_src lua
+-- Quick app launcher
+function app(key, name)
+  return gh.Action.new({
+    key = key,
+    application = name,
+    description = name,
+    icon = gh.Icon.fromBundleID(hs.application.infoForBundleID(name).bundleID)
+  })
+end
+
+-- Quick URL opener
+function url(key, name, link)
+  return gh.Action.new({
+    key = key,
+    handler = function() hs.urlevent.openURL(link) end,
+    description = name
+  })
+end
+#+end_src
+
+** Empty Cells for Layout
+
+Use empty actions to create visual spacing:
+
+#+begin_src lua
+local menu = {
+  {
+    gh.Action.new({ key = "a", application = "App1" }),
+    gh.Action.new({ empty = true }),  -- Skip this cell
+    gh.Action.new({ key = "b", application = "App2" }),
+  }
+}
+#+end_src
+
+** Multiple Grids
+
+Create multiple grids with different hotkeys for different contexts:
+
+#+begin_src lua
+-- Quick apps (Alt+Q)
+gh.Grid.new({"alt"}, "q", appsMenu, "Apps")
+
+-- Window management (Alt+W)
+gh.Grid.new({"alt"}, "w", windowMenu, "Windows")
+
+-- Master menu (Cmd+Alt+Ctrl+G)
+gh.Grid.new({"cmd", "alt", "ctrl"}, "g", masterMenu, "Master")
+#+end_src
+
+* Troubleshooting
+
+** Grid doesn't appear
+- Check that Hammerspoon is running and configured correctly
+- Verify your modifier keys and trigger key don't conflict with other hotkeys
+- Check the Hammerspoon console for error messages
+
+** Icons not showing
+- Verify image file paths are correct and files exist
+- Check bundle IDs are valid (use =hs.application.infoForBundlePath()= to verify)
+- Ensure images are in a supported format (PNG, JPG)
+
+** Performance issues
+- Reduce the number of cells in your grid
+- Use icon caching by reusing icon objects instead of creating new ones
+- Reduce =fadeTime= in theme settings
+
+* License
+
+MIT License - See LICENSE file for details
+
+* Credits
+
+Based on [[https://github.com/mrled/GridCraft][GridCraft]] by [[https://github.com/mrled][Micah R Ledbetter]].
+
+Reimplemented by Daniel German (dmg@turingmachine.org) with native canvas rendering for better performance.

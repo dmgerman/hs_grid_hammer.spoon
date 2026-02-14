@@ -43,7 +43,7 @@ local M = {}
 --- @field homepage string Spoon homepage URL
 M.name = "hs_grid_hammer"
 M.version = "0.1.0"
-M.author = "Daniel German <dmg@turingmachine.org>"
+M.author = "Daniel German <dmg@turingmachine.org> (based on GridCraft by Micah R Ledbetter)"
 M.license = "MIT"
 M.homepage = "https://github.com/dmg/hs_grid_hammer"
 
