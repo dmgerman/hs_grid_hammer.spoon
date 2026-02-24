@@ -19,6 +19,9 @@ Grid.__index = Grid
 -- Diagnostic counter
 local showCount = 0
 
+-- Instance registry for cleanup on reload
+local instances = {}
+
 --------------------------------------------------------------------------------
 -- Private helper functions
 --------------------------------------------------------------------------------
@@ -161,6 +164,7 @@ end
 --- @param grid table Grid instance
 local function setupModalCallbacks(grid)
   function grid.modal:entered()
+    print(string.format("[hs_grid_hammer] modal entered: %s", grid.title))
     grid.isShowing = true
 
     local showDelay = grid.config.showDelay or 0
@@ -178,13 +182,9 @@ local function setupModalCallbacks(grid)
   end
 
   function grid.modal:exited()
+    print(string.format("[hs_grid_hammer] modal exited: %s", grid.title))
     grid.isShowing = false
-    local delay = grid.config.animationDelay or 0.05
-    hs.timer.doAfter(delay, function()
-      if not grid.isShowing then
-        grid.renderer:hide()
-      end
-    end)
+    grid.renderer:hide()
   end
 end
 
@@ -305,6 +305,30 @@ end
 -- Public API
 --------------------------------------------------------------------------------
 
+--- Clean up all grid instances (call before reload or re-creation).
+--- Stops all modals and force-hides all renderers.
+function M.cleanup()
+  print(string.format("[hs_grid_hammer] cleanup: destroying %d grid instances", #instances))
+  for _, grid in ipairs(instances) do
+    pcall(function()
+      if grid.showTimer then
+        grid.showTimer:stop()
+        grid.showTimer = nil
+      end
+      grid.isShowing = false
+      grid.modal:exit()
+      grid.renderer:hide()
+    end)
+  end
+  instances = {}
+end
+
+--- Return all registered grid instances (for debugging).
+--- @return table Array of Grid instances
+function M.instances()
+  return instances
+end
+
 --- Create a new grid modal.
 ---
 --- @param mods table|nil Modifier keys for trigger hotkey (e.g., {"cmd", "ctrl"})
@@ -340,6 +364,9 @@ function M.new(mods, key, actionTable, title, config, chooserKey)
   bindSystemKeys(grid)
   bindActionKeys(grid)
   setupModalCallbacks(grid)
+
+  -- Register for cleanup
+  table.insert(instances, grid)
 
   return grid
 end
