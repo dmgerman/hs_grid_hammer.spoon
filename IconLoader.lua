@@ -3,8 +3,17 @@
 --- Async icon loading with LRU caching.
 --- Prevents UI blocking during icon loading and reduces memory usage.
 
-local Icon = dofile(hs.spoons.resourcePath("Icon.lua"))
-local Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
+local function _require(name)
+  _hs_grid_hammer_modules = _hs_grid_hammer_modules or {}
+  if not _hs_grid_hammer_modules[name] then
+    _hs_grid_hammer_modules[name] = dofile(hs.spoons.resourcePath(name))
+  end
+  return _hs_grid_hammer_modules[name]
+end
+
+local Icon = _require("Icon.lua")
+local Theme = _require("Theme.lua")
+local Util = _require("Util.lua")
 
 local M = {}
 
@@ -53,32 +62,6 @@ local function evictLRU()
   end
 
   stats.evictions = stats.evictions + evicted
-end
-
---- Find application path by name
---- @param appName string Application name
---- @return string|nil Path to app bundle or nil
-local function findAppPath(appName)
-  local app = hs.application.find(appName)
-  if app then
-    return app:path()
-  end
-
-  local home = os.getenv("HOME")
-  local searchPaths = {
-    "/Applications/" .. appName .. ".app",
-    "/System/Applications/" .. appName .. ".app",
-    "/Applications/Utilities/" .. appName .. ".app",
-    home .. "/Applications/" .. appName .. ".app",
-  }
-
-  for _, path in ipairs(searchPaths) do
-    if hs.fs.attributes(path) then
-      return path
-    end
-  end
-
-  return nil
 end
 
 --- Load and resize icon from path
@@ -169,7 +152,7 @@ function M.loadAppIconAsync(appName, callback)
   end
 
   hs.timer.doAfter(0, function()
-    local appPath = findAppPath(appName)
+    local appPath = Util.findApplicationPath(appName)
     if not appPath then
       callback(nil)
       return

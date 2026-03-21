@@ -7,8 +7,16 @@
 --- placeholder icons. Other modules should call these functions rather
 --- than duplicating rendering logic.
 
-local Color = dofile(hs.spoons.resourcePath("Color.lua"))
-local Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
+local function _require(name)
+  _hs_grid_hammer_modules = _hs_grid_hammer_modules or {}
+  if not _hs_grid_hammer_modules[name] then
+    _hs_grid_hammer_modules[name] = dofile(hs.spoons.resourcePath(name))
+  end
+  return _hs_grid_hammer_modules[name]
+end
+
+local Color = _require("Color.lua")
+local Theme = _require("Theme.lua")
 
 local M = {}
 

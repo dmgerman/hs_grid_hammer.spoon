@@ -5,9 +5,16 @@
 ---
 --- @module hs_grid_hammer.Grid
 
-local Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
-local KeyMap = dofile(hs.spoons.resourcePath("KeyMap.lua"))
-local CanvasRenderer = dofile(hs.spoons.resourcePath("CanvasRenderer.lua"))
+local function _require(name)
+  _hs_grid_hammer_modules = _hs_grid_hammer_modules or {}
+  if not _hs_grid_hammer_modules[name] then
+    _hs_grid_hammer_modules[name] = dofile(hs.spoons.resourcePath(name))
+  end
+  return _hs_grid_hammer_modules[name]
+end
+
+local Theme = _require("Theme.lua")
+local CanvasRenderer = _require("CanvasRenderer.lua")
 
 -- Lazy-loaded modules
 local IconLoader = nil
@@ -15,9 +22,6 @@ local IconLoader = nil
 local M = {}
 local Grid = {}
 Grid.__index = Grid
-
--- Diagnostic counter
-local showCount = 0
 
 -- Instance registry for cleanup on reload
 local instances = {}
@@ -29,24 +33,18 @@ local instances = {}
 --- Load IconLoader module lazily (once per session)
 local function getIconLoader()
   if IconLoader == nil then
-    local ok, loader = pcall(function()
-      return dofile(hs.spoons.resourcePath("IconLoader.lua"))
-    end)
+    local ok, loader = pcall(_require, "IconLoader.lua")
     IconLoader = ok and loader or false
   end
   return IconLoader or nil
 end
 
---- Assign keyIds to all actions and populate keyMap
+--- Assign keyIds to all actions
 --- @param actionTable table 2D array of actions
---- @param keyMap table KeyMap instance to populate
-local function initializeActions(actionTable, keyMap)
+local function initializeActions(actionTable)
   for rowIdx, row in ipairs(actionTable) do
     for colIdx, action in ipairs(row) do
       action.keyId = action.keyId or string.format("%dx%d", rowIdx, colIdx)
-      if action.key then
-        keyMap:add(action.mods or {}, action.key, action)
-      end
     end
   end
 end
@@ -96,16 +94,13 @@ end
 --- @return function Handler function for modal:bind
 local function createActionHandler(grid, action)
   return function()
-    local selectedKeyId = action.submenu and nil or action.keyId
-    grid:stop(selectedKeyId)
+    grid:stop()
 
-    hs.timer.doAfter(grid.theme.fadeTime, function()
-      if action.submenu then
-        action.submenu:start()
-      else
-        action.handler()
-      end
-    end)
+    if action.submenu then
+      action.submenu:start()
+    else
+      action.handler()
+    end
   end
 end
 
@@ -198,40 +193,21 @@ function Grid:start()
 end
 
 --- Stop the grid (exit modal and hide canvas)
---- @param selectedKeyId string|nil Optional keyId that was selected
-function Grid:stop(selectedKeyId)
+function Grid:stop()
   if self.showTimer then
     self.showTimer:stop()
     self.showTimer = nil
-  end
-  if selectedKeyId then
-    self.renderer:highlightCell(selectedKeyId)
   end
   self.modal:exit()
 end
 
 --- Show renderer and load icons asynchronously
 function Grid:showAndLoadIcons()
-  showCount = showCount + 1
-  local startTime = hs.timer.absoluteTime()
-
   self.renderer:show()
-
-  local showTime = hs.timer.absoluteTime()
-  local showMs = (showTime - startTime) / 1000000
 
   local loader = getIconLoader()
   if loader then
     self:loadIconsAsync(loader)
-  end
-
-  local totalMs = (hs.timer.absoluteTime() - startTime) / 1000000
-  local memKB = collectgarbage("count")
-  print(string.format("[hs_grid_hammer] #%d show=%.1fms total=%.1fms mem=%.0fKB", showCount, showMs, totalMs, memKB))
-
-  -- Periodic GC to prevent memory growth
-  if showCount % 10 == 0 then
-    collectgarbage("collect")
   end
 end
 
@@ -262,9 +238,7 @@ end
 function Grid:showChooser()
   self:stop()
 
-  local ok, Chooser = pcall(function()
-    return dofile(hs.spoons.resourcePath("Chooser.lua"))
-  end)
+  local ok, Chooser = pcall(_require, "Chooser.lua")
 
   if not ok then
     hs.alert.show("Chooser module not available")
@@ -298,6 +272,7 @@ function Grid:setConfiguration(newConfig)
     self.config[k] = v
   end
   self.theme = Theme.new(self.config.theme)
+  self.renderer:destroy()
   self.renderer = CanvasRenderer.new(self.actionTable, self.theme)
 end
 
@@ -317,7 +292,7 @@ function M.cleanup()
       end
       grid.isShowing = false
       grid.modal:exit()
-      grid.renderer:hide()
+      grid.renderer:destroy()
     end)
   end
   instances = {}
@@ -355,8 +330,7 @@ function M.new(mods, key, actionTable, title, config, chooserKey)
   grid.showTimer = nil
 
   -- Build components
-  grid.keyMap = KeyMap.new()
-  initializeActions(actionTable, grid.keyMap)
+  initializeActions(actionTable)
   grid.modal = createModal(mods, key, title)
   grid.renderer = CanvasRenderer.new(actionTable, grid.theme)
 

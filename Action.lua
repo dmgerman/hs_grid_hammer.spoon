@@ -3,7 +3,15 @@
 --- Action definitions for grid cells.
 --- Compatible with GridCraft API but uses hs.image for icons instead of HTML.
 
-local Util = dofile(hs.spoons.resourcePath("Util.lua"))
+local function _require(name)
+  _hs_grid_hammer_modules = _hs_grid_hammer_modules or {}
+  if not _hs_grid_hammer_modules[name] then
+    _hs_grid_hammer_modules[name] = dofile(hs.spoons.resourcePath(name))
+  end
+  return _hs_grid_hammer_modules[name]
+end
+
+local Util = _require("Util.lua")
 
 local M = {}
 
@@ -15,7 +23,6 @@ local M = {}
 --- @param action table Action being built
 --- @param arg table Original arguments
 local function handleNoKey(action, arg)
-  table.insert(action.classes, "no-key")
   action.handler = function() end
   action.description = arg.description or ""
 end
@@ -27,7 +34,6 @@ local function handleEmpty(action, arg)
   action.empty = true
   action.handler = function() end
   action.description = arg.description  -- nil = not rendered
-  table.insert(action.classes, "empty")
 end
 
 --- Handle application launcher action
@@ -36,25 +42,18 @@ end
 local function handleApplication(action, arg)
   local appPath = Util.findApplicationPath(arg.application)
   local appDesc = arg.description or arg.application
-  table.insert(action.classes, "application")
 
   if not appPath then
     print(string.format("[hs_grid_hammer] No application found for %s", arg.application))
     action.description = string.format("(%s)", appDesc)
     action.notFound = true
-    table.insert(action.classes, "not-found")
     return
   end
 
-  action.application = arg.application
   action.applicationPath = appPath
   action.description = appDesc
   action.handler = function()
     hs.application.launchOrFocus(arg.application)
-  end
-
-  if not arg.icon then
-    action.iconPath = appPath
   end
 end
 
@@ -62,13 +61,10 @@ end
 --- @param action table Action being built
 --- @param arg table Original arguments
 local function handleFile(action, arg)
-  table.insert(action.classes, "file")
-
   if hs.fs.attributes(arg.file) == nil then
     print(string.format("[hs_grid_hammer] No file found for %s", arg.file))
     action.description = string.format("(%s)", Util.getBasename(arg.file))
     action.notFound = true
-    table.insert(action.classes, "not-found")
     return
   end
 
@@ -77,18 +73,12 @@ local function handleFile(action, arg)
   action.handler = function()
     hs.execute(string.format("open '%s'", action.file))
   end
-
-  if not arg.icon then
-    action.iconPath = arg.file
-  end
 end
 
 --- Handle submenu action
 --- @param action table Action being built
 --- @param arg table Original arguments
 local function handleSubmenu(action, arg)
-  table.insert(action.classes, "submenu")
-
   if arg.submenu.modal then
     -- Already a Grid object
     action.submenu = arg.submenu
@@ -102,7 +92,6 @@ end
 --- @param action table Action being built
 --- @param arg table Original arguments
 local function handleCustom(action, arg)
-  table.insert(action.classes, "custom-handler")
 end
 
 --------------------------------------------------------------------------------
@@ -121,7 +110,6 @@ end
 ---      * handler: (function) Code to run when the key is pressed
 ---      * description: (string) A description for the action
 ---      * icon: (hs.image) An hs.image object to display
----      * classes: (table) A list of classes for styling hints
 ---    * Convenience parameters:
 ---      * empty: (boolean) If true, creates a placeholder slot
 ---      * application: (string) Application name to launch
@@ -137,7 +125,6 @@ function M.new(arg)
     handler = arg.handler or function() end,
     description = arg.description or "",
     icon = arg.icon,
-    classes = arg.classes or {},
   }
 
   -- Dispatch to appropriate handler based on action type

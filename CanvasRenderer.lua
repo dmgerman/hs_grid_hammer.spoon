@@ -3,31 +3,26 @@
 --- Native canvas rendering for the grid.
 --- Replaces GridCraft's WebView with hs.canvas for 10-100x faster rendering.
 
-local Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
-local Color = dofile(hs.spoons.resourcePath("Color.lua"))
+local function _require(name)
+  _hs_grid_hammer_modules = _hs_grid_hammer_modules or {}
+  if not _hs_grid_hammer_modules[name] then
+    _hs_grid_hammer_modules[name] = dofile(hs.spoons.resourcePath(name))
+  end
+  return _hs_grid_hammer_modules[name]
+end
+
+local Theme = _require("Theme.lua")
+local Color = _require("Color.lua")
 
 local M = {}
 M.__index = M
 
--- Track pending canvas deletions for cleanup
-local pendingDeletes = {}
+--- Modifier key symbols for hotkey labels
+local MOD_SYMBOLS = {cmd = "⌘", ctrl = "⌃", alt = "⌥", shift = "⇧", fn = "fn"}
 
 --------------------------------------------------------------------------------
 -- Private helper functions
 --------------------------------------------------------------------------------
-
---- Apply alpha multiplier to a color
---- @param color table Color with red/green/blue or white
---- @param alpha number Alpha multiplier (0-1)
---- @return table New color with adjusted alpha
-local function colorWithAlpha(color, alpha)
-  return {
-    red = color.red or color.white,
-    green = color.green or color.white,
-    blue = color.blue or color.white,
-    alpha = (color.alpha or 1.0) * alpha,
-  }
-end
 
 --- Calculate cell position from row/column indices
 --- @param theme table Theme settings
@@ -64,7 +59,7 @@ local function createCellBackground(keyId, theme, cellX, cellY, alpha)
     type = "rectangle",
     action = "fill",
     frame = {x = cellX, y = cellY, w = theme.cellWidth, h = theme.cellHeight},
-    fillColor = colorWithAlpha(theme.cellBackground, alpha),
+    fillColor = Color.withAlpha(theme.cellBackground, alpha),
     roundedRectRadii = {xRadius = theme.cellCornerRadius, yRadius = theme.cellCornerRadius},
   }
 end
@@ -83,7 +78,7 @@ local function createCellBorder(keyId, theme, cellX, cellY, alpha, isDashed)
     type = "rectangle",
     action = "stroke",
     frame = {x = cellX, y = cellY, w = theme.cellWidth, h = theme.cellHeight},
-    strokeColor = colorWithAlpha(theme.cellBorder, alpha),
+    strokeColor = Color.withAlpha(theme.cellBorder, alpha),
     strokeWidth = theme.cellBorderWidth,
     strokeDashPattern = isDashed and {6, 4} or nil,
     roundedRectRadii = {xRadius = theme.cellCornerRadius, yRadius = theme.cellCornerRadius},
@@ -158,9 +153,8 @@ local function createHotkeyLabel(keyId, theme, cellX, cellY, mods, key, textColo
   -- Format hotkey text
   local hotkeyText = ""
   if mods and #mods > 0 then
-    local modMap = {cmd = "⌘", ctrl = "⌃", alt = "⌥", shift = "⇧", fn = "fn"}
     for _, mod in ipairs(mods) do
-      hotkeyText = hotkeyText .. (modMap[string.lower(mod)] or mod)
+      hotkeyText = hotkeyText .. (MOD_SYMBOLS[string.lower(mod)] or mod)
     end
   end
   hotkeyText = hotkeyText .. string.upper(key)
@@ -296,13 +290,14 @@ function M:buildCellElements(action, rowIdx, colIdx)
       type = "rectangle",
       action = "fill",
       frame = {x = iconX, y = iconY, w = t.iconSize, h = t.iconSize},
-      fillColor = colorWithAlpha(t.emptyCellIconColor, alpha),
+      fillColor = Color.withAlpha(t.emptyCellIconColor, alpha),
       roundedRectRadii = {xRadius = t.iconCornerRadius, yRadius = t.iconCornerRadius},
     })
   else
     local text = action.description or action.key or "?"
     local bgEl, letterEl = createPlaceholderIcon(keyId, t, iconX, iconY, text, alpha)
     table.insert(elements, bgEl)
+    cellIndexes.iconLetterIndex = #elements + 1
     table.insert(elements, letterEl)
   end
 
@@ -350,12 +345,20 @@ function M:buildElements()
       local offset = #elements
       cellIndexes.bgIndex = cellIndexes.bgIndex + offset
       cellIndexes.iconIndex = cellIndexes.iconIndex + offset
+      if cellIndexes.iconLetterIndex then
+        cellIndexes.iconLetterIndex = cellIndexes.iconLetterIndex + offset
+      end
       if cellIndexes.hotkeyIndex then
         cellIndexes.hotkeyIndex = cellIndexes.hotkeyIndex + offset
       end
       if cellIndexes.descIndex then
         cellIndexes.descIndex = cellIndexes.descIndex + offset
       end
+
+      -- Store cell position for updateIcon
+      local cellX, cellY = cellPosition(self.theme, rowIdx, colIdx)
+      cellIndexes.cellX = cellX
+      cellIndexes.cellY = cellY
 
       for _, el in ipairs(cellElements) do
         table.insert(elements, el)
@@ -370,18 +373,17 @@ function M:buildElements()
   return elements
 end
 
---- Build and show the canvas
+--- Build and show the canvas.
+--- On first call, creates canvas and builds all elements.
+--- On subsequent calls, repositions (screen may change) and shows.
 function M:show()
-  local t0 = hs.timer.absoluteTime()
-
-  -- Clean up any pending canvases from rapid show/hide
-  for _, c in ipairs(pendingDeletes) do
-    pcall(function() c:delete() end)
-  end
-  pendingDeletes = {}
-
   if self.canvas then
-    self.canvas:delete()
+    -- Reposition for current screen and show
+    local x, y = self:centeredPosition()
+    local width, height = self:canvasSize()
+    self.canvas:frame({x = x, y = y, w = width, h = height})
+    self.canvas:show(self.theme.fadeTime)
+    return
   end
 
   local width, height = self:canvasSize()
@@ -391,46 +393,28 @@ function M:show()
   self.canvas:level("overlay")
   self.canvas:behavior(hs.canvas.windowBehaviors.canJoinAllSpaces)
 
-  local t1 = hs.timer.absoluteTime()
   local elements = self:buildElements()
-  local t2 = hs.timer.absoluteTime()
-
-  -- Batch insert all elements at once (faster than individual inserts)
   self.canvas:replaceElements(elements)
-
-  local t3 = hs.timer.absoluteTime()
   self.canvas:show(self.theme.fadeTime)
-
-  local setupMs = (t1 - t0) / 1000000
-  local buildMs = (t2 - t1) / 1000000
-  local insertMs = (t3 - t2) / 1000000
-  print(string.format("[CanvasRenderer] setup=%.1fms build=%.1fms insert=%.1fms pending=%d",
-    setupMs, buildMs, insertMs, #pendingDeletes))
 end
 
---- Hide and delete the canvas
+--- Hide the canvas (keeps it alive for reuse)
 function M:hide()
   if self.canvas then
-    local canvasToDelete = self.canvas
-    self.canvas = nil
-    -- Track pending delete
-    table.insert(pendingDeletes, canvasToDelete)
-    -- Delete after fade completes to ensure proper cleanup
-    hs.timer.doAfter(self.theme.fadeTime + 0.05, function()
-      canvasToDelete:delete()
-      -- Remove from pending list
-      for i, c in ipairs(pendingDeletes) do
-        if c == canvasToDelete then
-          table.remove(pendingDeletes, i)
-          break
-        end
-      end
-    end)
-    canvasToDelete:hide(self.theme.fadeTime)
+    self.canvas:hide(self.theme.fadeTime)
   end
 end
 
---- Update a cell's icon image
+--- Destroy the canvas completely (for reload/reconfiguration)
+function M:destroy()
+  if self.canvas then
+    self.canvas:delete()
+    self.canvas = nil
+    self.cellElements = {}
+  end
+end
+
+--- Update a cell's icon image (in-place replacement, no remove/insert)
 --- @param keyId string The cell's key ID
 --- @param image hs.image The new icon image
 function M:updateIcon(keyId, image)
@@ -439,66 +423,15 @@ function M:updateIcon(keyId, image)
   local indexes = self.cellElements[keyId]
   if not indexes then return end
 
-  -- Remove placeholder elements
-  local iconBgId = keyId .. "_icon_bg"
-  local iconLetterId = keyId .. "_icon_letter"
-
-  for i = #self.canvas, 1, -1 do
-    local el = self.canvas[i]
-    if el and (el.id == iconBgId or el.id == iconLetterId) then
-      self.canvas:removeElement(i)
-    end
-  end
-
-  -- Find cell position and insert icon
+  -- Replace the placeholder bg with the real icon image in-place
   local t = self.theme
-  for rowIdx, row in ipairs(self.actionTable) do
-    for colIdx, action in ipairs(row) do
-      local cellKeyId = action.keyId or string.format("%dx%d", rowIdx, colIdx)
-      if cellKeyId == keyId then
-        local cellX, cellY = cellPosition(t, rowIdx, colIdx)
-        local iconX, iconY = iconPosition(t, cellX, cellY)
-        self.canvas:insertElement(createIconImage(keyId, t, iconX, iconY, image, 1.0))
-        return
-      end
-    end
+  local iconX, iconY = iconPosition(t, indexes.cellX, indexes.cellY)
+  self.canvas[indexes.iconIndex] = createIconImage(keyId, t, iconX, iconY, image, 1.0)
+
+  -- Hide the letter element by setting alpha to 0
+  if indexes.iconLetterIndex then
+    self.canvas:elementAttribute(indexes.iconLetterIndex, "textColor", {white = 1.0, alpha = 0})
   end
-end
-
---- Highlight a cell (for selection feedback)
---- @param keyId string The cell's key ID
-function M:highlightCell(keyId)
-  -- No-op for API compatibility
-end
-
---- Generate a deterministic placeholder color from a string
---- @param str string Input string
---- @return table Color table
-function M:placeholderColor(str)
-  return Color.fromString(str)
-end
-
---- Get first letter of a string (uppercase)
---- @param str string Input string
---- @return string First letter uppercase
-function M:firstLetter(str)
-  if not str or str == "" then return "?" end
-  return string.upper(string.sub(str, 1, 1))
-end
-
---- Format hotkey for display
---- @param mods table Modifier keys
---- @param key string The key
---- @return string Formatted hotkey
-function M:formatHotkey(mods, key)
-  local result = ""
-  if mods and #mods > 0 then
-    local modMap = {cmd = "⌘", ctrl = "⌃", alt = "⌥", shift = "⇧", fn = "fn"}
-    for _, mod in ipairs(mods) do
-      result = result .. (modMap[string.lower(mod)] or mod)
-    end
-  end
-  return result .. string.upper(key)
 end
 
 return M

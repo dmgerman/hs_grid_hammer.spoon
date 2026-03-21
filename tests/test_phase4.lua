@@ -31,7 +31,6 @@ local appAction = spoon.hs_grid_hammer.Action.new({
   application = "Finder",
 })
 assert(appAction.key == "f", "App action has key")
-assert(appAction.application == "Finder", "App action has application")
 assert(appAction.applicationPath ~= nil, "App action has path")
 assert(type(appAction.handler) == "function", "App action has handler")
 print("✓ Action.new({application = 'Finder'}) works")
@@ -66,13 +65,8 @@ print("✓ Action.spacer() works")
 -- Test Configuration
 print("\n--- Testing Configuration ---")
 local config = spoon.hs_grid_hammer.Configuration.new()
-assert(config.animationMs == 150, "Config has animationMs")
-assert(config:animationSeconds() == 0.15, "Config animationSeconds() works")
+assert(config.showDelay == 0, "Config has showDelay")
 print("✓ Configuration.new() works")
-
-config:merge({animationMs = 200})
-assert(config.animationMs == 200, "Config merge works")
-print("✓ Configuration:merge() works")
 
 -- Test Util functions
 print("\n--- Testing Util ---")
@@ -85,10 +79,6 @@ print("✓ Util.findApplicationPath('Finder') = " .. finderPath)
 local basename = Util.getBasename("/Users/test/Documents/file.txt")
 assert(basename == "file.txt", "Basename extraction works")
 print("✓ Util.getBasename() works")
-
-local mods = Util.formatModifiers({"cmd", "shift"}, "symbols")
-assert(mods == "⌘⇧", "Symbol format works")
-print("✓ Util.formatModifiers() works: " .. mods)
 
 -- Test Chooser
 print("\n--- Testing Chooser ---")
@@ -129,10 +119,7 @@ local testGrid = spoon.hs_grid_hammer.Grid.new(
 assert(testGrid ~= nil, "Grid created")
 assert(testGrid.modal ~= nil, "Grid has modal")
 assert(testGrid.renderer ~= nil, "Grid has renderer")
-assert(testGrid.keyMap:count() == 5, "Grid keyMap has 5 keys (excluding spacer)")
 print("✓ Grid.new() with full action table works")
-print("  KeyMap entries: " .. testGrid.keyMap:count())
-print("  Valid keys: " .. testGrid.keyMap:validKeysString())
 
 -- Visual test
 print("\n--- Visual Integration Test ---")

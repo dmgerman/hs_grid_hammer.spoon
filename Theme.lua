@@ -65,7 +65,6 @@ M.default = {
 
   -- Animation
   fadeTime = 0.15,
-  animationDelay = 0.05,
 }
 
 --- Create a new theme by merging overrides with defaults

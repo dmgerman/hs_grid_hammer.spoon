@@ -69,10 +69,6 @@ local testActions = {
 local grid = Grid.new({}, "f19", testActions, "Phase 2 Test")
 print("✓ Grid.new() created successfully")
 
--- Verify keyMap was populated
-assert(grid.keyMap:count() == 6, "KeyMap has 6 entries")
-print("✓ KeyMap populated with " .. grid.keyMap:count() .. " keys")
-
 -- Verify modal was created
 assert(grid.modal ~= nil, "Modal created")
 print("✓ hs.hotkey.modal created")

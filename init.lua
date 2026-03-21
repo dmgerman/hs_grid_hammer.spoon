@@ -26,12 +26,19 @@
 --- Pass a config table as the 5th argument to Grid.new():
 ---
 --- ```lua
---- local config = gh.Configuration.new({
----   showDelay = 0.2,      -- Delay before showing menu (seconds)
----   animationDelay = 0.05 -- Delay before hiding (for visual feedback)
---- })
+--- local config = gh.Configuration.new()
+--- config.showDelay = 0.2  -- Delay before showing menu (seconds)
 --- gh.Grid.new(mods, key, actions, title, config)
 --- ```
+
+--- Module cache to avoid re-executing dofile() multiple times
+_hs_grid_hammer_modules = _hs_grid_hammer_modules or {}
+local function _require(name)
+  if not _hs_grid_hammer_modules[name] then
+    _hs_grid_hammer_modules[name] = dofile(hs.spoons.resourcePath(name))
+  end
+  return _hs_grid_hammer_modules[name]
+end
 
 local M = {}
 
@@ -61,7 +68,7 @@ M.homepage = "https://github.com/dmg/hs_grid_hammer"
 ---  * `grid:stop()` - Hide the grid and exit modal mode
 ---  * `grid:setConfiguration(config)` - Update configuration
 ---  * `grid:showChooser()` - Show searchable chooser interface
-M.Grid = dofile(hs.spoons.resourcePath("Grid.lua"))
+M.Grid = _require("Grid.lua")
 
 --- hs_grid_hammer.Action
 --- Variable
@@ -78,7 +85,7 @@ M.Grid = dofile(hs.spoons.resourcePath("Grid.lua"))
 ---    - `icon` (hs.image): Custom icon image
 ---    - `submenuTable` (table): 2D array for nested submenu
 ---    - `empty` (boolean): Mark as placeholder cell
-M.Action = dofile(hs.spoons.resourcePath("Action.lua"))
+M.Action = _require("Action.lua")
 
 --- hs_grid_hammer.Configuration
 --- Variable
@@ -87,9 +94,8 @@ M.Action = dofile(hs.spoons.resourcePath("Action.lua"))
 --- Methods:
 ---  * `Configuration.new(opts)` - Create config with options:
 ---    - `showDelay` (number): Seconds to wait before showing grid (default 0)
----    - `animationDelay` (number): Seconds to wait before hiding (default 0.05)
 ---    - `theme` (table): Theme overrides (see Theme module)
-M.Configuration = dofile(hs.spoons.resourcePath("Configuration.lua"))
+M.Configuration = _require("Configuration.lua")
 
 --- hs_grid_hammer.Theme
 --- Variable
@@ -103,7 +109,7 @@ M.Configuration = dofile(hs.spoons.resourcePath("Configuration.lua"))
 ---
 --- Theme options include: backgroundColor, cellBackground, cellWidth,
 --- cellHeight, iconSize, fadeTime, and more.
-M.Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
+M.Theme = _require("Theme.lua")
 
 --- hs_grid_hammer.Icon
 --- Variable
@@ -121,7 +127,7 @@ M.Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
 --- Predefined symbols: app-window, monitor, chat, translate, speaker-high,
 --- globe, folder, file, terminal, mail, calendar, search, settings, music,
 --- video, microphone, keyboard
-M.Icon = dofile(hs.spoons.resourcePath("Icon.lua"))
+M.Icon = _require("Icon.lua")
 
 --- hs_grid_hammer.IconLoader
 --- Variable
@@ -136,7 +142,7 @@ M.Icon = dofile(hs.spoons.resourcePath("Icon.lua"))
 ---  * `IconLoader.clear()` - Clear the cache
 ---  * `IconLoader.getStats()` - Get cache statistics
 ---  * `IconLoader.printStats()` - Print cache statistics
-M.IconLoader = dofile(hs.spoons.resourcePath("IconLoader.lua"))
+M.IconLoader = _require("IconLoader.lua")
 
 --- hs_grid_hammer.Chooser
 --- Variable
@@ -145,7 +151,7 @@ M.IconLoader = dofile(hs.spoons.resourcePath("IconLoader.lua"))
 --- Methods:
 ---  * `Chooser.fromActionTable(actionTable)` - Convert actions to chooser format
 ---    Returns: choices (table), actions (table keyed by uuid)
-M.Chooser = dofile(hs.spoons.resourcePath("Chooser.lua"))
+M.Chooser = _require("Chooser.lua")
 
 --- hs_grid_hammer.Color
 --- Variable
@@ -157,7 +163,7 @@ M.Chooser = dofile(hs.spoons.resourcePath("Chooser.lua"))
 ---  * `Color.fromString(str, saturation, lightness)` - Generate color from string
 ---  * `Color.fromHex(hex)` - Parse hex color string
 ---  * `Color.withAlpha(color, alpha)` - Apply alpha to color
-M.Color = dofile(hs.spoons.resourcePath("Color.lua"))
+M.Color = _require("Color.lua")
 
 --- hs_grid_hammer.Util
 --- Variable
@@ -165,7 +171,7 @@ M.Color = dofile(hs.spoons.resourcePath("Color.lua"))
 ---
 --- Methods:
 ---  * Various helper functions ported from GridCraft
-M.Util = dofile(hs.spoons.resourcePath("Util.lua"))
+M.Util = _require("Util.lua")
 
 --------------------------------------------------------------------------------
 -- Spoon Lifecycle

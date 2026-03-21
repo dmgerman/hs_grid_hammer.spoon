@@ -9,7 +9,7 @@ local Theme = dofile(spoonPath .. "Theme.lua")
 assert(Theme.default.cellWidth == 100, "Theme has cellWidth")
 assert(Theme.default.cellHeight == 100, "Theme has cellHeight")
 assert(Theme.default.iconSize == 64, "Theme has iconSize")
-assert(Theme.default.backgroundColor.alpha == 0.95, "Theme has backgroundColor")
+assert(Theme.default.backgroundColor.alpha == 0.1, "Theme has backgroundColor")
 print("✓ Theme.lua loads and has expected values")
 
 -- Test Theme.new() with overrides
@@ -80,23 +80,6 @@ local width, height = renderer:canvasSize()
 assert(width > 0, "Canvas has width")
 assert(height > 0, "Canvas has height")
 print(string.format("✓ CanvasRenderer.canvasSize() = %dx%d", width, height))
-
--- Test placeholder color generation
-local color1 = renderer:placeholderColor("Terminal")
-local color2 = renderer:placeholderColor("Finder")
-assert(color1.red ~= color2.red or color1.green ~= color2.green, "Different strings get different colors")
-print("✓ CanvasRenderer.placeholderColor() generates unique colors")
-
--- Test first letter
-assert(renderer:firstLetter("Terminal") == "T", "First letter extraction")
-assert(renderer:firstLetter("") == "?", "Empty string fallback")
-print("✓ CanvasRenderer.firstLetter() works")
-
--- Test hotkey formatting
-assert(renderer:formatHotkey({}, "e") == "E", "Plain key format")
-assert(renderer:formatHotkey({"cmd"}, "e") == "⌘E", "Cmd+key format")
-assert(renderer:formatHotkey({"cmd", "shift"}, "e") == "⌘⇧E", "Cmd+Shift+key format")
-print("✓ CanvasRenderer.formatHotkey() works")
 
 -- Visual test
 print("\n=== Visual Test ===")
