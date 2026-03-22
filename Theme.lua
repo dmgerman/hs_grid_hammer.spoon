@@ -63,8 +63,6 @@ M.default = {
   descriptionInsetX = 6,
   descriptionInsetY = 4,
 
-  -- Animation
-  fadeTime = 0.15,
 }
 
 --- Create a new theme by merging overrides with defaults

@@ -382,7 +382,7 @@ function M:show()
     local x, y = self:centeredPosition()
     local width, height = self:canvasSize()
     self.canvas:frame({x = x, y = y, w = width, h = height})
-    self.canvas:show(self.theme.fadeTime)
+    self.canvas:show()
     return
   end
 
@@ -401,7 +401,7 @@ end
 --- Hide the canvas (keeps it alive for reuse)
 function M:hide()
   if self.canvas then
-    self.canvas:hide(self.theme.fadeTime)
+    self.canvas:hide()
   end
 end
 
