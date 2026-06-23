@@ -18,39 +18,6 @@ assert(customTheme.cellWidth == 150, "Custom theme has override")
 assert(customTheme.cellHeight == 100, "Custom theme inherits defaults")
 print("✓ Theme.new() merges overrides correctly")
 
--- Test KeyMap.lua
-print("\n=== Testing KeyMap.lua ===")
-local KeyMap = dofile(spoonPath .. "KeyMap.lua")
-local km = KeyMap.new()
-
--- Test basic add/lookup
-km:add({}, "e", {name = "test1"})
-km:add({"cmd"}, "e", {name = "test2"})
-km:add({"cmd", "shift"}, "e", {name = "test3"})
-km:add({"shift", "cmd"}, "x", {name = "test4"})  -- Different mod order
-
-assert(km:lookup({}, "e").name == "test1", "Plain key lookup")
-assert(km:lookup({"cmd"}, "e").name == "test2", "Cmd+key lookup")
-assert(km:lookup({"cmd", "shift"}, "e").name == "test3", "Cmd+Shift+key lookup")
-assert(km:lookup({"shift", "cmd"}, "e").name == "test3", "Mod order independent (lookup)")
-assert(km:lookup({}, "x") == nil, "Missing key returns nil")
-print("✓ KeyMap add/lookup works")
-
--- Test has()
-assert(km:has({}, "e") == true, "has() returns true for bound key")
-assert(km:has({}, "z") == false, "has() returns false for unbound key")
-print("✓ KeyMap.has() works")
-
--- Test count()
-assert(km:count() == 4, "count() returns correct number")
-print("✓ KeyMap.count() works")
-
--- Test validKeysString()
-local validStr = km:validKeysString()
-assert(validStr:find("E") ~= nil, "validKeysString contains E")
-assert(validStr:find("Cmd") ~= nil, "validKeysString contains Cmd")
-print("✓ KeyMap.validKeysString() works: " .. validStr)
-
 -- Test CanvasRenderer.lua (visual test)
 print("\n=== Testing CanvasRenderer.lua ===")
 local CanvasRenderer = dofile(spoonPath .. "CanvasRenderer.lua")

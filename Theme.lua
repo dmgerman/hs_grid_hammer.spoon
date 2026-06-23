@@ -9,6 +9,9 @@ local M = {}
 
 --- Default theme matching GridCraft visual style
 M.default = {
+  -- Canvas fade-in duration (seconds)
+  fadeTime = 0.15,
+
   -- Grid overlay background
   backgroundColor = {red = 0.1, green = 0.1, blue = 0.1, alpha = 0.1},
   gridCornerRadius = 10,

@@ -3,16 +3,8 @@
 --- Native canvas rendering for the grid.
 --- Replaces GridCraft's WebView with hs.canvas for 10-100x faster rendering.
 
-local function _require(name)
-  _hs_grid_hammer_modules = _hs_grid_hammer_modules or {}
-  if not _hs_grid_hammer_modules[name] then
-    _hs_grid_hammer_modules[name] = dofile(hs.spoons.resourcePath(name))
-  end
-  return _hs_grid_hammer_modules[name]
-end
-
-local Theme = _require("Theme.lua")
-local Color = _require("Color.lua")
+local Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
+local Color = dofile(hs.spoons.resourcePath("Color.lua"))
 
 local M = {}
 M.__index = M
@@ -216,7 +208,6 @@ function M.new(actionTable, theme)
   self.actionTable = actionTable
   self.theme = theme or Theme.default
   self.canvas = nil
-  self.cellElements = {}
   return self
 end
 
@@ -256,7 +247,6 @@ end
 --- @param rowIdx number Row index
 --- @param colIdx number Column index
 --- @return table Array of canvas elements for this cell
---- @return table Cell element indexes
 function M:buildCellElements(action, rowIdx, colIdx)
   local elements = {}
   local t = self.theme
@@ -270,21 +260,12 @@ function M:buildCellElements(action, rowIdx, colIdx)
   local alpha = (isEmpty or isNotFound) and t.cellEmptyAlpha or 1.0
   local textColor = (isEmpty or isNotFound) and t.textColorDimmed or t.textColor
 
-  local cellIndexes = {}
-
-  -- Background
-  cellIndexes.bgIndex = 1
   table.insert(elements, createCellBackground(keyId, t, cellX, cellY, alpha))
-
-  -- Border
   table.insert(elements, createCellBorder(keyId, t, cellX, cellY, alpha, isEmpty))
 
-  -- Icon
-  cellIndexes.iconIndex = #elements + 1
   if action.icon then
     table.insert(elements, createIconImage(keyId, t, iconX, iconY, action.icon, alpha))
   elseif isEmpty then
-    -- Empty cells get just a black square, no letter
     table.insert(elements, {
       id = keyId .. "_icon_bg",
       type = "rectangle",
@@ -297,23 +278,18 @@ function M:buildCellElements(action, rowIdx, colIdx)
     local text = action.description or action.key or "?"
     local bgEl, letterEl = createPlaceholderIcon(keyId, t, iconX, iconY, text, alpha)
     table.insert(elements, bgEl)
-    cellIndexes.iconLetterIndex = #elements + 1
     table.insert(elements, letterEl)
   end
 
-  -- Hotkey label
   if action.key then
-    cellIndexes.hotkeyIndex = #elements + 1
     table.insert(elements, createHotkeyLabel(keyId, t, cellX, cellY, action.mods, action.key, textColor))
   end
 
-  -- Description label
   if action.description and action.description ~= "" then
-    cellIndexes.descIndex = #elements + 1
     table.insert(elements, createDescriptionLabel(keyId, t, cellX, cellY, action.description, textColor))
   end
 
-  return elements, cellIndexes, keyId
+  return elements
 end
 
 --- Build canvas elements array
@@ -323,7 +299,6 @@ function M:buildElements()
   local t = self.theme
   local width, height = self:canvasSize()
 
-  -- Background
   table.insert(elements, {
     type = "rectangle",
     action = "fill",
@@ -332,41 +307,13 @@ function M:buildElements()
     roundedRectRadii = {xRadius = t.gridCornerRadius, yRadius = t.gridCornerRadius},
   })
 
-  -- Cells
   for rowIdx, row in ipairs(self.actionTable) do
     for colIdx, action in ipairs(row) do
-      if not action.key and not action.description then
-        goto continue
+      if action.key or action.description then
+        for _, el in ipairs(self:buildCellElements(action, rowIdx, colIdx)) do
+          table.insert(elements, el)
+        end
       end
-
-      local cellElements, cellIndexes, keyId = self:buildCellElements(action, rowIdx, colIdx)
-
-      -- Adjust indexes to account for elements already in array
-      local offset = #elements
-      cellIndexes.bgIndex = cellIndexes.bgIndex + offset
-      cellIndexes.iconIndex = cellIndexes.iconIndex + offset
-      if cellIndexes.iconLetterIndex then
-        cellIndexes.iconLetterIndex = cellIndexes.iconLetterIndex + offset
-      end
-      if cellIndexes.hotkeyIndex then
-        cellIndexes.hotkeyIndex = cellIndexes.hotkeyIndex + offset
-      end
-      if cellIndexes.descIndex then
-        cellIndexes.descIndex = cellIndexes.descIndex + offset
-      end
-
-      -- Store cell position for updateIcon
-      local cellX, cellY = cellPosition(self.theme, rowIdx, colIdx)
-      cellIndexes.cellX = cellX
-      cellIndexes.cellY = cellY
-
-      for _, el in ipairs(cellElements) do
-        table.insert(elements, el)
-      end
-
-      self.cellElements[keyId] = cellIndexes
-
-      ::continue::
     end
   end
 
@@ -410,27 +357,6 @@ function M:destroy()
   if self.canvas then
     self.canvas:delete()
     self.canvas = nil
-    self.cellElements = {}
-  end
-end
-
---- Update a cell's icon image (in-place replacement, no remove/insert)
---- @param keyId string The cell's key ID
---- @param image hs.image The new icon image
-function M:updateIcon(keyId, image)
-  if not self.canvas then return end
-
-  local indexes = self.cellElements[keyId]
-  if not indexes then return end
-
-  -- Replace the placeholder bg with the real icon image in-place
-  local t = self.theme
-  local iconX, iconY = iconPosition(t, indexes.cellX, indexes.cellY)
-  self.canvas[indexes.iconIndex] = createIconImage(keyId, t, iconX, iconY, image, 1.0)
-
-  -- Hide the letter element by setting alpha to 0
-  if indexes.iconLetterIndex then
-    self.canvas:elementAttribute(indexes.iconLetterIndex, "textColor", {white = 1.0, alpha = 0})
   end
 end
 

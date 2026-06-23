@@ -3,27 +3,21 @@
 
 print("\n=== Phase 4: Integration Tests ===")
 
--- Load the spoon
 local spoon_hs_grid_hammer = hs.loadSpoon("hs_grid_hammer")
 assert(spoon_hs_grid_hammer ~= nil, "Spoon loaded")
 print("✓ hs.loadSpoon('hs_grid_hammer') succeeded")
 
--- Test spoon metadata
 assert(spoon.hs_grid_hammer.name == "hs_grid_hammer", "Spoon has name")
 assert(spoon.hs_grid_hammer.version ~= nil, "Spoon has version")
 print("✓ Spoon metadata present: " .. spoon.hs_grid_hammer.name .. " v" .. spoon.hs_grid_hammer.version)
 
--- Test module exports
 assert(spoon.hs_grid_hammer.Grid ~= nil, "Grid exported")
 assert(spoon.hs_grid_hammer.Action ~= nil, "Action exported")
 assert(spoon.hs_grid_hammer.Configuration ~= nil, "Configuration exported")
 assert(spoon.hs_grid_hammer.Theme ~= nil, "Theme exported")
-assert(spoon.hs_grid_hammer.IconLoader ~= nil, "IconLoader exported")
-assert(spoon.hs_grid_hammer.Chooser ~= nil, "Chooser exported")
-assert(spoon.hs_grid_hammer.Util ~= nil, "Util exported")
-print("✓ All modules exported")
+assert(spoon.hs_grid_hammer.Icon ~= nil, "Icon exported")
+print("✓ Public modules exported")
 
--- Test Action.new() with various types
 print("\n--- Testing Action.new() ---")
 
 local appAction = spoon.hs_grid_hammer.Action.new({
@@ -32,6 +26,7 @@ local appAction = spoon.hs_grid_hammer.Action.new({
 })
 assert(appAction.key == "f", "App action has key")
 assert(appAction.applicationPath ~= nil, "App action has path")
+assert(appAction.icon ~= nil, "App action has eagerly-loaded icon")
 assert(type(appAction.handler) == "function", "App action has handler")
 print("✓ Action.new({application = 'Finder'}) works")
 
@@ -58,41 +53,22 @@ local customAction = spoon.hs_grid_hammer.Action.new({
 assert(customAction.description == "Custom", "Custom action has description")
 print("✓ Action.new({handler = fn}) works")
 
-local spacer = spoon.hs_grid_hammer.Action.spacer()
-assert(spacer.key == nil, "Spacer has no key")
-print("✓ Action.spacer() works")
-
--- Test Configuration
 print("\n--- Testing Configuration ---")
 local config = spoon.hs_grid_hammer.Configuration.new()
 assert(config.showDelay == 0, "Config has showDelay")
 print("✓ Configuration.new() works")
 
--- Test Util functions
-print("\n--- Testing Util ---")
-local Util = spoon.hs_grid_hammer.Util
+print("\n--- Testing Icon memoization ---")
+local sym1 = spoon.hs_grid_hammer.Icon.symbol("music")
+local sym2 = spoon.hs_grid_hammer.Icon.symbol("music")
+assert(sym1 == sym2, "Icon.symbol returns cached image for repeat calls")
+print("✓ Icon.symbol() memoizes")
 
-local finderPath = Util.findApplicationPath("Finder")
-assert(finderPath ~= nil, "Found Finder path")
-print("✓ Util.findApplicationPath('Finder') = " .. finderPath)
+local txt1 = spoon.hs_grid_hammer.Icon.fromText("Hello")
+local txt2 = spoon.hs_grid_hammer.Icon.fromText("Hello")
+assert(txt1 == txt2, "Icon.fromText returns cached image for repeat calls")
+print("✓ Icon.fromText() memoizes")
 
-local basename = Util.getBasename("/Users/test/Documents/file.txt")
-assert(basename == "file.txt", "Basename extraction works")
-print("✓ Util.getBasename() works")
-
--- Test Chooser
-print("\n--- Testing Chooser ---")
-local testActions = {
-  {
-    {key = "a", description = "Action A", handler = function() end},
-    {key = "b", description = "Action B", handler = function() end},
-  },
-}
-local choices, actions = spoon.hs_grid_hammer.Chooser.fromActionTable(testActions)
-assert(#choices == 2, "Chooser created 2 choices")
-print("✓ Chooser.fromActionTable() works")
-
--- Test full Grid creation with GridCraft-compatible API
 print("\n--- Testing Grid Creation ---")
 
 local testGrid = spoon.hs_grid_hammer.Grid.new(
@@ -110,7 +86,6 @@ local testGrid = spoon.hs_grid_hammer.Grid.new(
         handler = function() print("Custom action executed!") end,
         description = "Custom"
       }),
-      spoon.hs_grid_hammer.Action.spacer(),
     },
   },
   "Integration Test Grid"
@@ -121,7 +96,6 @@ assert(testGrid.modal ~= nil, "Grid has modal")
 assert(testGrid.renderer ~= nil, "Grid has renderer")
 print("✓ Grid.new() with full action table works")
 
--- Visual test
 print("\n--- Visual Integration Test ---")
 print("Showing grid for 4 seconds...")
 print("Try pressing: F (Finder), T (Terminal), S (Safari), C (Custom)")

@@ -5,19 +5,8 @@
 ---
 --- @module hs_grid_hammer.Grid
 
-local function _require(name)
-  _hs_grid_hammer_modules = _hs_grid_hammer_modules or {}
-  if not _hs_grid_hammer_modules[name] then
-    _hs_grid_hammer_modules[name] = dofile(hs.spoons.resourcePath(name))
-  end
-  return _hs_grid_hammer_modules[name]
-end
-
-local Theme = _require("Theme.lua")
-local CanvasRenderer = _require("CanvasRenderer.lua")
-
--- Lazy-loaded modules
-local IconLoader = nil
+local Theme = dofile(hs.spoons.resourcePath("Theme.lua"))
+local CanvasRenderer = dofile(hs.spoons.resourcePath("CanvasRenderer.lua"))
 
 local M = {}
 local Grid = {}
@@ -29,15 +18,6 @@ local instances = {}
 --------------------------------------------------------------------------------
 -- Private helper functions
 --------------------------------------------------------------------------------
-
---- Load IconLoader module lazily (once per session)
-local function getIconLoader()
-  if IconLoader == nil then
-    local ok, loader = pcall(_require, "IconLoader.lua")
-    IconLoader = ok and loader or false
-  end
-  return IconLoader or nil
-end
 
 --- Assign keyIds to all actions
 --- @param actionTable table 2D array of actions
@@ -159,25 +139,23 @@ end
 --- @param grid table Grid instance
 local function setupModalCallbacks(grid)
   function grid.modal:entered()
-    print(string.format("[hs_grid_hammer] modal entered: %s", grid.title))
     grid.isShowing = true
 
     local showDelay = grid.config.showDelay or 0
     if showDelay <= 0 then
-      grid:showAndLoadIcons()
+      grid.renderer:show()
       return
     end
 
     grid.showTimer = hs.timer.doAfter(showDelay, function()
       grid.showTimer = nil
       if grid.isShowing then
-        grid:showAndLoadIcons()
+        grid.renderer:show()
       end
     end)
   end
 
   function grid.modal:exited()
-    print(string.format("[hs_grid_hammer] modal exited: %s", grid.title))
     grid.isShowing = false
     grid.renderer:hide()
   end
@@ -201,50 +179,11 @@ function Grid:stop()
   self.modal:exit()
 end
 
---- Show renderer and load icons asynchronously
-function Grid:showAndLoadIcons()
-  self.renderer:show()
-
-  local loader = getIconLoader()
-  if loader then
-    self:loadIconsAsync(loader)
-  end
-end
-
---- Load icons asynchronously after grid is shown
---- @param loader table The IconLoader module
-function Grid:loadIconsAsync(loader)
-  forEachAction(self.actionTable, function(action)
-    if not action.key then return end
-    if action.icon then return end
-    if action.iconLoaded then return end  -- Already loaded in previous show
-
-    local iconPath = action.applicationPath or action.file
-    if not iconPath then return end
-
-    local keyId = action.keyId
-    local grid = self
-    action.iconLoaded = true  -- Mark as loaded (even if loading fails)
-    loader.loadAsync(iconPath, function(image)
-      if image and grid.isShowing then
-        action.icon = image  -- Store for future reference
-        grid.renderer:updateIcon(keyId, image)
-      end
-    end)
-  end)
-end
-
 --- Show the chooser interface
 function Grid:showChooser()
   self:stop()
 
-  local ok, Chooser = pcall(_require, "Chooser.lua")
-
-  if not ok then
-    hs.alert.show("Chooser module not available")
-    return
-  end
-
+  local Chooser = dofile(hs.spoons.resourcePath("Chooser.lua"))
   local choices, actions = Chooser.fromActionTable(self.actionTable)
 
   if #choices == 0 then
@@ -263,17 +202,6 @@ function Grid:showChooser()
   chooser:choices(choices)
   chooser:width(30)
   chooser:show()
-end
-
---- Set configuration and rebuild renderer
---- @param newConfig table New configuration to merge
-function Grid:setConfiguration(newConfig)
-  for k, v in pairs(newConfig) do
-    self.config[k] = v
-  end
-  self.theme = Theme.new(self.config.theme)
-  self.renderer:destroy()
-  self.renderer = CanvasRenderer.new(self.actionTable, self.theme)
 end
 
 --------------------------------------------------------------------------------
