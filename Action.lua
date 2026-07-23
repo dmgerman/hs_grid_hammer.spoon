@@ -7,6 +7,19 @@ local Icon = dofile(hs.spoons.resourcePath("Icon.lua"))
 
 local M = {}
 
+--- Normalize a mods argument into a table.
+--- Accepts nil, "", "shift", "cmd+shift", or an existing table.
+local function normalizeMods(mods)
+  if mods == nil or mods == "" then return {} end
+  if type(mods) == "table" then return mods end
+  local result = {}
+  for token in string.gmatch(mods, "[^+]+") do
+    local trimmed = token:match("^%s*(.-)%s*$")
+    if trimmed ~= "" then table.insert(result, trimmed) end
+  end
+  return result
+end
+
 local function handleEmpty(action, arg)
   action.empty = true
   action.handler = function() end
@@ -70,7 +83,7 @@ end
 --- Keys with no `key` field render as invisible spacers.
 function M.new(arg)
   local action = {
-    mods = arg.mods or {},
+    mods = normalizeMods(arg.mods),
     key = arg.key,
     handler = arg.handler or function() end,
     description = arg.description or "",
