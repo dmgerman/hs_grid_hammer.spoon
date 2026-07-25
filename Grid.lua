@@ -211,7 +211,6 @@ end
 --- Clean up all grid instances (call before reload or re-creation).
 --- Stops all modals and force-hides all renderers.
 function M.cleanup()
-  print(string.format("[hs_grid_hammer] cleanup: destroying %d grid instances", #instances))
   for _, grid in ipairs(instances) do
     pcall(function()
       if grid.showTimer then
